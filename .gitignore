@@ -1,0 +1,21 @@
+# 环境变量
+.env
+
+# 临时文件
+_temp_uploads/
+chroma_db/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# 输出
+output/*.md
+!output/.gitkeep
