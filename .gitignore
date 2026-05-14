@@ -19,3 +19,5 @@ venv/
 # 输出
 output/*.md
 !output/.gitkeep
+
+.claude

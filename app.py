@@ -1,414 +1,391 @@
-"""AI 简历优化助手 - Streamlit 主界面"""
+"""AI 简历优化助手 —— 基于目标岗位驱动的简历优化与PDF生成"""
 import streamlit as st
-import json
 from pathlib import Path
+import tempfile
 
-from config import LLM_API_KEY, KNOWLEDGE_BASE_PATH
-from models.resume import Resume
-from models.job import JobRequirement
-from utils.file_utils import save_generated_resume
 from utils.resume_parser import parse_resume
+
 from agents.resume_analysis_agent import ResumeAnalysisAgent
-from agents.rag_retrieval_agent import RAGRetrievalAgent
+from agents.role_analyzer_agent import RoleAnalyzerAgent
+from agents.gap_analyzer_agent import GapAnalyzerAgent
 from agents.optimization_agent import OptimizationAgent
 from agents.resume_generation_agent import ResumeGenerationAgent
 from agents.job_matching_agent import JobMatchingAgent
-from rag.retriever import retriever
 
-# ─── 页面配置 ─────────────────────────────────────
+from generators.template_engine import TemplateEngine
+from generators.pdf_renderer import PDFRenderer
+
+
+# ---- 页面配置 ----
 st.set_page_config(
     page_title="AI 简历优化助手",
-    page_icon="📋",
+    page_icon="📄",
     layout="wide",
 )
 
-# ─── 初始化 Session State ────────────────────────
-if "resume" not in st.session_state:
-    st.session_state.resume = None
-if "analysis" not in st.session_state:
-    st.session_state.analysis = None
-if "suggestions" not in st.session_state:
-    st.session_state.suggestions = None
-if "optimized_resume" not in st.session_state:
-    st.session_state.optimized_resume = None
-if "rag_references" not in st.session_state:
-    st.session_state.rag_references = None
-if "job_match" not in st.session_state:
-    st.session_state.job_match = None
+st.title("📄 AI 简历优化助手")
+st.caption("基于目标岗位驱动，上传简历即可获得专业优化和PDF输出。JD可选，仅需岗位名也可优化。")
 
-# ─── 侧边栏 ───────────────────────────────────────
-with st.sidebar:
-    st.title("⚙️ 设置")
-    api_key = st.text_input("API Key", value=LLM_API_KEY, type="password")
-    if not api_key:
-        st.warning("请先在 .env 文件中配置 LLM_API_KEY")
-    st.divider()
-    st.markdown("### 📚 知识库状态")
-    stats = retriever.get_knowledge_base_stats()
-    st.metric("知识库片段数", stats["total_chunks"])
-    st.divider()
-    st.markdown("### 📌 使用流程")
-    st.markdown("""
-    1. 上传简历 (PDF/DOCX)
-    2. 输入求职意向
-    3. 进行简历分析
-    4. 查看优化建议
-    5. 生成优化简历
-    6. （可选）岗位匹配分析
-    """)
 
-# ─── 主页面标题 ──────────────────────────────────
-st.title("📋 AI 简历优化助手")
-st.markdown("基于 RAG + Agent 技术的智能简历优化工具，帮你打造更出色的简历。")
+# ---- 初始化组件 ----
+@st.cache_resource
+def get_agents():
+    return {
+        "analysis": ResumeAnalysisAgent(),
+        "role": RoleAnalyzerAgent(),
+        "gap": GapAnalyzerAgent(),
+        "optimization": OptimizationAgent(),
+        "generation": ResumeGenerationAgent(),
+        "matching": JobMatchingAgent(),
+    }
 
-# ─── Tab 布局 ────────────────────────────────────
-tab1, tab2, tab3, tab4 = st.tabs([
-    "📄 简历上传与分析",
-    "💡 优化建议",
-    "✨ 简历生成",
-    "🎯 岗位匹配",
-])
 
-# ════════════════════════════════════════════════
-# Tab 1: 简历上传与分析
-# ════════════════════════════════════════════════
-with tab1:
-    col1, col2 = st.columns([1, 1])
+@st.cache_resource
+def get_generators():
+    return TemplateEngine(), PDFRenderer()
 
-    with col1:
-        st.subheader("上传简历")
-        uploaded_file = st.file_uploader(
-            "选择简历文件 (PDF 或 DOCX)",
-            type=["pdf", "docx"],
-            key="resume_uploader",
-        )
 
-        job_intent = st.text_input(
-            "求职意向（目标岗位）",
-            placeholder="例如：高级 Python 后端工程师",
-            key="job_intent",
-        )
+agents = get_agents()
+template_engine, pdf_renderer = get_generators()
+templates = template_engine.list_templates()
 
-        col_analyze, col_clear = st.columns([1, 1])
-        with col_analyze:
-            analyze_btn = st.button("🔍 开始分析", type="primary", use_container_width=True)
-        with col_clear:
-            if st.button("🔄 重置", use_container_width=True):
-                for key in ["resume", "analysis", "suggestions", "optimized_resume",
-                            "rag_references", "job_match"]:
-                    st.session_state[key] = None
-                st.rerun()
+# ---- Session State ----
+defaults = {
+    "resume": None,
+    "resume_raw_text": "",
+    "resume_analysis": None,
+    "job_profile": None,
+    "gap_analysis": None,
+    "suggestions": None,
+    "optimized_resume": None,
+    "match_result": None,
+    "pdf_bytes": None,
+    "current_template": templates[0]["id"],
+    "job_title_input": "",
+}
+for key, val in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
 
-    with col2:
-        st.subheader("简历预览")
-        if st.session_state.resume:
-            resume: Resume = st.session_state.resume
-            st.text_area("原始文本", resume.raw_text, height=400)
-        elif uploaded_file is not None:
-            st.info("点击「开始分析」按钮处理简历")
-        else:
-            st.info("请上传简历文件")
 
-    # 分析逻辑
-    if analyze_btn:
-        if not uploaded_file:
-            st.error("请先上传简历文件")
-        elif not api_key:
-            st.error("请先在侧边栏配置 API Key")
-        else:
-            with st.spinner("正在解析简历..."):
-                # 保存上传文件到临时位置
-                temp_dir = Path("_temp_uploads")
-                temp_dir.mkdir(exist_ok=True)
-                temp_path = temp_dir / uploaded_file.name
-                temp_path.write_bytes(uploaded_file.getvalue())
+# ---- 输入区域 ----
+col1, col2 = st.columns([1, 1])
 
-                # 解析简历
-                resume_obj = parse_resume(temp_path)
-                if resume_obj is None or not resume_obj.raw_text.strip():
-                    st.error("无法解析简历内容，请检查文件格式")
+with col1:
+    st.subheader("📤 上传简历")
+    uploaded_file = st.file_uploader(
+        "支持 PDF / DOCX 格式",
+        type=["pdf", "docx"],
+        help="上传你的简历文件，支持 PDF 和 Word 格式",
+    )
+
+    st.subheader("🎯 目标岗位")
+    job_title = st.text_input(
+        "意向岗位名称（必填）",
+        placeholder="例如：高级Java开发工程师、产品经理、数据分析师",
+        help="输入你期望的岗位名称，Agent会根据行业标准优化你的简历",
+        key="job_title_input_widget",
+    )
+
+with col2:
+    st.subheader("📋 岗位描述（可选）")
+    jd_text = st.text_area(
+        "粘贴目标岗位的 JD",
+        placeholder="如有目标岗位的招聘JD，粘贴到这里可以让优化更精准...\n\n不填也可以，Agent会根据你输入的岗位名称自动分析该岗位的典型要求。",
+        height=180,
+        help="粘贴完整的岗位描述可以让简历优化更有针对性",
+    )
+
+    st.subheader("🎨 排版风格")
+    template_names = [f"{t['name']} - {t['description']}" for t in templates]
+    selected_tpl_idx = st.selectbox(
+        "选择PDF排版模板",
+        range(len(templates)),
+        format_func=lambda i: template_names[i],
+    )
+    st.session_state.current_template = templates[selected_tpl_idx]["id"]
+
+# ---- 操作按钮 ----
+col_btn1, col_btn2 = st.columns([1, 3])
+with col_btn1:
+    start_btn = st.button("🚀 开始优化", type="primary", use_container_width=True)
+with col_btn2:
+    if st.button("🔄 重置", use_container_width=False):
+        for key in defaults:
+            st.session_state[key] = defaults[key]
+        st.rerun()
+
+
+# ---- 主流程 ----
+if start_btn:
+    if not uploaded_file:
+        st.error("请先上传简历文件")
+    elif not job_title.strip():
+        st.error("请输入意向岗位名称")
+    else:
+        st.session_state.job_title_input = job_title.strip()
+        with st.status("正在处理...", expanded=True) as status:
+            try:
+                # Step 1: 解析简历
+                st.write("📖 解析简历文件...")
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    filepath = Path(tmpdir) / uploaded_file.name
+                    filepath.write_bytes(uploaded_file.getvalue())
+                    resume = parse_resume(filepath)
+
+                if not resume or not resume.raw_text:
+                    st.error("无法解析简历文件，请检查文件格式")
+                    st.stop()
+
+                st.session_state.resume = resume
+                st.session_state.resume_raw_text = resume.raw_text
+                st.write("✅ 简历解析完成")
+
+                # Step 1.5: 结构化提取（从raw_text解析出完整的structured Resume）
+                st.write("📝 提取简历结构化信息...")
+                structured_resume = agents["analysis"].extract_structured_resume(
+                    resume.raw_text, job_title
+                )
+                st.session_state.resume = structured_resume  # 替换空壳Resume
+                st.write(f"✅ 结构化提取完成: {len(structured_resume.work_experiences)}段工作经历, {len(structured_resume.projects)}个项目, {len(structured_resume.skills)}类技能")
+
+                # Step 2: 岗位画像
+                st.write("🔍 分析目标岗位画像...")
+                if jd_text.strip():
+                    st.session_state.job_profile = agents["role"].analyze_from_jd(jd_text)
                 else:
-                    st.session_state.resume = resume_obj
-                    st.success("简历解析完成！")
+                    st.session_state.job_profile = agents["role"].analyze_from_title(job_title)
+                jp = st.session_state.job_profile
+                st.write(f"✅ 岗位画像完成: {jp.title} ({jp.level or '层级未指定'})")
 
-            with st.spinner("AI 正在分析简历..."):
-                try:
-                    # 1. 简历分析
-                    analysis_agent = ResumeAnalysisAgent()
-                    analysis = analysis_agent.analyze(resume_obj)
-                    st.session_state.analysis = analysis
+                # Step 2.5: 深度分析简历（推断隐式技能和结构化信息）
+                st.write("🔬 深度分析简历内容...")
+                st.session_state.resume_analysis = agents["analysis"].analyze(resume)
+                st.write("✅ 简历深度分析完成")
 
-                    # 2. RAG 检索
-                    rag_agent = RAGRetrievalAgent()
-                    rag_results = rag_agent.retrieve_by_analysis(analysis)
-                    st.session_state.rag_references = rag_agent.format_results(rag_results)
+                # Step 3: Gap 分析（传入简历分析结果）
+                st.write("📊 对比简历与岗位差距...")
+                st.session_state.gap_analysis = agents["gap"].analyze(
+                    resume, st.session_state.job_profile,
+                    resume_analysis=st.session_state.resume_analysis,
+                )
+                st.write("✅ 差距分析完成")
 
-                    st.success("简历分析完成！请查看「优化建议」标签页。")
-                except Exception as e:
-                    st.error(f"分析过程中出错: {e}")
+                # Step 4: 优化建议
+                st.write("💡 生成优化建议...")
+                st.session_state.suggestions = agents["optimization"].generate_suggestions(
+                    st.session_state.gap_analysis,
+                    st.session_state.job_profile,
+                )
+                st.write("✅ 优化建议生成完成")
 
-    # 显示分析结果摘要
-    if st.session_state.analysis:
-        with st.expander("📊 分析结果摘要", expanded=True):
-            analysis = st.session_state.analysis
-            col_score, col_strengths, col_weak = st.columns([1, 2, 2])
+                # Step 5: 生成优化简历
+                st.write("✍️ 生成优化后的简历...")
+                st.session_state.optimized_resume = agents["generation"].generate(
+                    resume,
+                    st.session_state.suggestions,
+                    st.session_state.job_profile,
+                )
+                st.write("✅ 优化简历生成完成")
 
-            with col_score:
-                score = analysis.get("overall_score", "N/A")
-                st.metric("综合评分", f"{score}/10")
+                # Step 6: 岗位匹配分析
+                st.write("📈 计算岗位匹配度...")
+                st.session_state.match_result = agents["matching"].match(
+                    st.session_state.optimized_resume,
+                    st.session_state.job_profile,
+                )
+                st.write("✅ 匹配分析完成")
 
-            with col_strengths:
-                st.markdown("**✅ 优势**")
-                for s in analysis.get("strengths", []):
-                    st.markdown(f"- {s}")
+                # Step 7: 生成 PDF
+                st.write("🖨️ 渲染PDF...")
+                html = template_engine.render(
+                    st.session_state.optimized_resume,
+                    job_title,
+                    st.session_state.current_template,
+                )
+                st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
+                st.write("✅ PDF 生成完成")
 
-            with col_weak:
-                st.markdown("**⚠️ 待改进**")
-                for w in analysis.get("weaknesses", []):
-                    st.markdown(f"- **{w.get('aspect', '')}**: {w.get('detail', '')}")
+                status.update(label="✨ 优化完成！", state="complete", expanded=False)
 
-# ════════════════════════════════════════════════
-# Tab 2: 优化建议
-# ════════════════════════════════════════════════
-with tab2:
-    if not st.session_state.analysis:
-        st.info("请先在「简历上传与分析」标签页上传并分析简历")
-    else:
-        st.subheader("💡 简历优化建议")
+            except Exception as e:
+                status.update(label=f"❌ 处理出错", state="error")
+                st.exception(e)
 
-        col_gen, _ = st.columns([1, 3])
-        with col_gen:
-            gen_suggestions_btn = st.button("🚀 生成优化建议", type="primary")
 
-        if gen_suggestions_btn:
-            with st.spinner("AI 正在生成优化建议..."):
-                try:
-                    optimization_agent = OptimizationAgent()
-                    suggestions = optimization_agent.generate_suggestions(
-                        analysis=st.session_state.analysis,
-                        rag_references=st.session_state.rag_references or "",
-                        job_intent=job_intent or "",
-                    )
-                    st.session_state.suggestions = suggestions
-                    st.success("优化建议生成完成！")
-                except Exception as e:
-                    st.error(f"生成建议时出错: {e}")
+# ---- 结果展示 ----
+if st.session_state.optimized_resume:
+    st.divider()
 
-        if st.session_state.suggestions:
-            suggestions = st.session_state.suggestions
+    tabs = st.tabs(["📊 优化预览", "🔬 分析报告", "📥 PDF下载"])
 
-            # 整体策略
-            st.markdown("### 📌 整体策略")
-            st.info(suggestions.get("overall_strategy", ""))
+    # ---- Tab 1: 优化预览 ----
+    with tabs[0]:
+        st.subheader("简历对比")
+        col_orig, col_opt = st.columns(2)
 
-            # 内容优化项
-            st.markdown("### 📝 内容优化")
-            optimizations = suggestions.get("content_optimizations", [])
-            for i, opt in enumerate(optimizations, 1):
-                with st.expander(f"{i}. {opt.get('section', '')}"):
-                    st.markdown(f"**问题**: {opt.get('original', '')}")
-                    st.markdown(f"**建议**: {opt.get('suggestion', '')}")
-                    if opt.get("example"):
-                        st.markdown(f"**示例**:")
-                        st.code(opt.get("example", ""))
+        with col_orig:
+            st.markdown("**📋 原始简历**")
+            with st.container(border=True, height=500):
+                st.text(st.session_state.resume_raw_text[:5000])
 
-            # 关键词
-            st.markdown("### 🔑 推荐关键词")
-            keywords = suggestions.get("keywords", [])
-            if keywords:
-                st.markdown(" ".join([f"`{k}`" for k in keywords]))
+        with col_opt:
+            st.markdown("**✨ 优化后简历**")
+            with st.container(border=True, height=500):
+                opt = st.session_state.optimized_resume
+                change_labels = {
+                    "keep": ("🟢", "green"),
+                    "modified": ("🟡", "orange"),
+                    "restructured": ("🔵", "blue"),
+                    "new_wording": ("🟣", "violet"),
+                }
 
-            # 格式建议
-            st.markdown("### 📐 格式建议")
-            for f_sug in suggestions.get("format_suggestions", []):
-                st.markdown(f"- {f_sug}")
+                def badge(ct: str) -> str:
+                    icon, _ = change_labels.get(ct, ("⚪", "grey"))
+                    return f" {icon}`{ct}`"
 
-            # 针对性调整
-            st.markdown("### 🎯 针对性调整")
-            st.write(suggestions.get("job_targeting", ""))
+                st.markdown(f"**{opt.name}** | {opt.phone} | {opt.email}")
+                st.markdown(f"*求职意向: {opt.title}*")
+                if opt.summary:
+                    st.markdown(f"> {opt.summary}")
 
-            # 优先行动
-            st.markdown("### ⭐ 优先行动项")
-            for action in suggestions.get("priority_actions", []):
-                st.markdown(f"- **{action}**")
+                if opt.work_experiences:
+                    st.markdown("##### 工作经历")
+                    for exp in opt.work_experiences:
+                        st.markdown(f"**{exp.position}** @ {exp.company}  *{exp.start_date} - {exp.end_date}*{badge(exp.change_type)}")
+                        for r in exp.responsibilities:
+                            st.markdown(f"- {r}")
+                        for a in exp.achievements:
+                            st.markdown(f"- ⭐ {a}")
 
-            # RAG 参考
-            if st.session_state.rag_references:
-                with st.expander("📚 优秀简历参考（RAG）"):
-                    st.text(st.session_state.rag_references)
+                if opt.projects:
+                    st.markdown("##### 项目经历")
+                    for proj in opt.projects:
+                        st.markdown(f"**{proj.name}** ({proj.role})  *{proj.start_date} - {proj.end_date}*{badge(proj.change_type)}")
+                        for h in proj.highlights:
+                            st.markdown(f"- {h}")
+                        if proj.tech_stack:
+                            st.caption(f"🔧 {', '.join(proj.tech_stack)}")
 
-# ════════════════════════════════════════════════
-# Tab 3: 简历生成
-# ════════════════════════════════════════════════
-with tab3:
-    if not st.session_state.suggestions:
-        st.info("请先在「优化建议」标签页生成优化建议")
-    else:
-        st.subheader("✨ 生成优化简历")
+                if opt.skills:
+                    st.markdown("##### 技能")
+                    for skill in opt.skills:
+                        st.markdown(f"- **{skill.category}**: {', '.join(skill.items)}{badge(skill.change_type)}")
 
-        col_gen2, _ = st.columns([1, 3])
-        with col_gen2:
-            gen_resume_btn = st.button("📄 生成优化简历", type="primary")
+    # ---- Tab 2: 分析报告 ----
+    with tabs[1]:
+        col_a, col_b = st.columns(2)
 
-        if gen_resume_btn:
-            with st.spinner("AI 正在生成优化简历..."):
-                try:
-                    generation_agent = ResumeGenerationAgent()
-                    optimized = generation_agent.generate(
-                        original_resume=st.session_state.resume,
-                        suggestions=st.session_state.suggestions,
-                        job_intent=job_intent or "",
-                    )
-                    st.session_state.optimized_resume = optimized
-                    st.success("优化简历生成完成！")
-                except Exception as e:
-                    st.error(f"生成简历时出错: {e}")
+        with col_a:
+            st.subheader("🎯 岗位画像")
+            if st.session_state.job_profile:
+                job = st.session_state.job_profile
+                with st.container(border=True):
+                    st.markdown(f"**岗位**: {job.title}")
+                    if job.company:
+                        st.markdown(f"**公司**: {job.company}")
+                    st.markdown(f"**层级**: {job.level or '未指定'} | **行业**: {job.industry or '未指定'}")
+                    source_label = "JD原文提取" if job.source == "jd" else "岗位名推测"
+                    st.caption(f"来源: {source_label}")
+                    if job.tech_keywords:
+                        st.markdown(f"**技术关键词**: {' '.join([f'`{k}`' for k in job.tech_keywords])}")
+                    if job.soft_skills:
+                        st.markdown(f"**软技能**: {', '.join(job.soft_skills)}")
+                    if job.responsibilities:
+                        with st.expander(f"典型职责（{len(job.responsibilities)}条）"):
+                            for r in job.responsibilities:
+                                st.markdown(f"- {r}")
+                    if job.requirements:
+                        with st.expander(f"硬性要求（{len(job.requirements)}条）"):
+                            for r in job.requirements:
+                                st.markdown(f"- {r}")
 
-        if st.session_state.optimized_resume:
-            optimized = st.session_state.optimized_resume
+            st.subheader("📊 匹配度")
+            if st.session_state.match_result:
+                score = st.session_state.match_result.get("match_score", 0)
+                st.progress(score / 100, text=f"**{score}/100**")
+                st.caption(st.session_state.match_result.get("summary", ""))
+                with st.expander("匹配优势"):
+                    for s in st.session_state.match_result.get("match_strengths", []):
+                        st.markdown(f"- ✅ {s}")
 
-            # 显示对比
-            tab_original, tab_optimized = st.tabs(["原始简历", "优化简历"])
+        with col_b:
+            st.subheader("🔍 关键词分析")
+            if st.session_state.gap_analysis:
+                kw = st.session_state.gap_analysis.get("keyword_match", {})
+                col_k1, col_k2, col_k3 = st.columns(3)
+                with col_k1:
+                    st.markdown("**✅ 已匹配**")
+                    for k in kw.get("matched", []):
+                        st.markdown(f"- `{k}`")
+                with col_k2:
+                    st.markdown("**📌 不够突出**")
+                    for k in kw.get("present_but_buried", []):
+                        st.markdown(f"- `{k}`")
+                with col_k3:
+                    st.markdown("**❌ 缺失**")
+                    for k in kw.get("missing", []):
+                        st.markdown(f"- `{k}`")
 
-            with tab_original:
-                if st.session_state.resume:
-                    st.text_area("", st.session_state.resume.to_text(), height=500)
+            st.subheader("💡 优化建议")
+            if st.session_state.suggestions:
+                st.info(st.session_state.suggestions.get("overall_strategy", ""))
+                with st.expander("详细优化项", expanded=True):
+                    for opt in st.session_state.suggestions.get("content_optimizations", []):
+                        st.markdown(f"**{opt.get('section', '')}**")
+                        st.caption(f"问题: {opt.get('original', '')}")
+                        st.markdown(f"建议: {opt.get('suggestion', '')}")
+                        if opt.get("example"):
+                            st.code(opt.get("example", ""), language=None)
 
-            with tab_optimized:
-                st.markdown(optimized)
+            st.subheader("📋 优先行动")
+            if st.session_state.suggestions:
+                for i, action in enumerate(st.session_state.suggestions.get("priority_actions", []), 1):
+                    st.markdown(f"{i}. **{action}**")
 
-            # 导出
-            st.divider()
-            col_dl1, col_dl2 = st.columns([1, 3])
+    # ---- Tab 3: PDF下载 ----
+    with tabs[2]:
+        st.subheader("📥 下载优化简历")
 
-            with col_dl1:
-                saved = save_generated_resume(optimized, "optimized_resume.md")
-                with open(saved, "rb") as f:
-                    st.download_button(
-                        label="📥 下载优化简历 (Markdown)",
-                        data=f,
-                        file_name="optimized_resume.md",
-                        mime="text/markdown",
-                        use_container_width=True,
-                    )
-            with col_dl2:
-                st.info(f"文件已保存至: {saved}")
-
-# ════════════════════════════════════════════════
-# Tab 4: 岗位匹配
-# ════════════════════════════════════════════════
-with tab4:
-    if not st.session_state.resume:
-        st.info("请先在「简历上传与分析」标签页上传简历")
-    else:
-        st.subheader("🎯 岗位匹配分析")
-
-        job_desc = st.text_area(
-            "粘贴岗位描述 (JD)",
-            placeholder="请粘贴 Boss 直聘或其他平台的岗位描述...",
-            height=200,
+        download_tpl = st.selectbox(
+            "切换排版风格",
+            template_names,
+            key="download_tpl_select",
         )
+        download_tpl_id = templates[template_names.index(download_tpl)]["id"]
 
-        col_match, _ = st.columns([1, 3])
-        with col_match:
-            match_btn = st.button("🎯 分析匹配度", type="primary")
+        if download_tpl_id != st.session_state.current_template or st.button("🔄 用此模板重新渲染", key="re_render_btn"):
+            st.session_state.current_template = download_tpl_id
+            html = template_engine.render(
+                st.session_state.optimized_resume,
+                st.session_state.job_title_input,
+                download_tpl_id,
+            )
+            st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
 
-        if match_btn:
-            if not job_desc.strip():
-                st.error("请先输入岗位描述")
-            else:
-                with st.spinner("AI 正在分析匹配度..."):
-                    try:
-                        job = JobRequirement(description=job_desc)
-                        # 尝试从 JD 中提取结构化信息
-                        try:
-                            extract_prompt = f"""从以下岗位描述中提取结构化信息并以JSON格式返回：
-{job_desc}
+        if st.session_state.pdf_bytes:
+            col_dl1, col_dl2 = st.columns(2)
+            with col_dl1:
+                st.download_button(
+                    label="📥 下载 PDF 简历",
+                    data=st.session_state.pdf_bytes,
+                    file_name=f"简历_{st.session_state.optimized_resume.name}_{download_tpl_id}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            with col_dl2:
+                st.markdown(f"📄 模板: **{download_tpl}**")
+                st.caption(f"文件大小: {len(st.session_state.pdf_bytes) / 1024:.1f} KB")
 
-{{"title": "岗位名称", "company": "公司名称", "salary_range": "薪资范围", "responsibilities": ["职责1"], "requirements": ["要求1"]}}
-"""
-                            from openai import OpenAI
-                            client = OpenAI(api_key=api_key, base_url=LLM_BASE_URL)
-                            from config import LLM_BASE_URL, LLM_MODEL_NAME
-                            resp = client.chat.completions.create(
-                                model=LLM_MODEL_NAME,
-                                messages=[{"role": "user", "content": extract_prompt}],
-                                response_format={"type": "json_object"},
-                                temperature=0.1,
-                            )
-                            job_data = json.loads(resp.choices[0].message.content)
-                            job = JobRequirement(**{k: v for k, v in job_data.items()
-                                                     if k in JobRequirement.model_fields})
-                        except Exception:
-                            job = JobRequirement(description=job_desc)
-
-                        matching_agent = JobMatchingAgent()
-                        match_result = matching_agent.match(
-                            resume=st.session_state.resume,
-                            job=job,
-                        )
-                        st.session_state.job_match = match_result
-                        st.success("匹配分析完成！")
-                    except Exception as e:
-                        st.error(f"匹配分析时出错: {e}")
-
-        if st.session_state.job_match:
-            match = st.session_state.job_match
-
-            # 匹配度评分
-            score = match.get("match_score", 0)
-            col_m1, col_m2, col_m3 = st.columns(3)
-
-            with col_m1:
-                st.metric("匹配度", f"{score}/100")
-                st.progress(score / 100)
-
-            with col_m2:
-                st.markdown("**✅ 匹配优势**")
-                for s in match.get("match_strengths", []):
-                    st.markdown(f"- {s}")
-
-            with col_m3:
-                st.markdown("**❌ 差距分析**")
-                for g in match.get("match_gaps", []):
-                    st.markdown(f"- **{g.get('requirement', '')}**: {g.get('current_status', '')}")
-
-            # 关键词匹配
-            st.markdown("### 🔑 关键词匹配")
-            kw_match = match.get("keyword_match", {})
-            col_kw1, col_kw2 = st.columns(2)
-
-            with col_kw1:
-                st.markdown("**已匹配关键词**")
-                for kw in kw_match.get("matched", []):
-                    st.markdown(f"✅ `{kw}`")
-
-            with col_kw2:
-                st.markdown("**缺失关键词**")
-                for kw in kw_match.get("missing", []):
-                    st.markdown(f"❌ `{kw}`")
-
-            # 具体建议
-            st.markdown("### 📋 具体改进建议")
-            for action in match.get("specific_actions", []):
-                st.markdown(f"- {action}")
-
-            # 生成针对性简历
             st.divider()
-            st.markdown("### 📄 生成针对性简历")
-            if st.button("生成针对该岗位的优化简历", type="primary"):
-                with st.spinner("正在生成针对性简历..."):
-                    try:
-                        gen_agent = ResumeGenerationAgent()
-                        targeted_resume = gen_agent.generate_by_template(
-                            original_resume=st.session_state.resume,
-                            job_description=job_desc,
-                        )
-                        st.session_state.optimized_resume = targeted_resume
-                        st.success("针对性简历生成完成！请到「简历生成」标签页查看。")
-                    except Exception as e:
-                        st.error(f"生成时出错: {e}")
+            st.caption("备选格式:")
+            st.download_button(
+                label="📝 下载 Markdown 版本",
+                data=st.session_state.optimized_resume.to_text(),
+                file_name=f"简历_{st.session_state.optimized_resume.name}.md",
+                mime="text/markdown",
+            )
 
-# ─── 页脚 ───────────────────────────────────────
+# ---- 底部 ----
 st.divider()
-st.caption("AI 简历优化助手 | 基于 RAG + Agent 技术构建 | 数据仅保存在本地")
+st.caption("💡 优化基于目标岗位需求驱动，不会编造不存在的经历。所有修改都是对现有经历的重新表述和结构优化。")

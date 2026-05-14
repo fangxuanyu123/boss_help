@@ -1,6 +1,6 @@
 """简历数据模型"""
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 class Education(BaseModel):
@@ -11,6 +11,7 @@ class Education(BaseModel):
     start_date: str = ""
     end_date: str = ""
     description: str = ""
+    change_type: Literal["keep", "modified", "restructured", "new_wording"] = "keep"
 
 
 class WorkExperience(BaseModel):
@@ -21,6 +22,7 @@ class WorkExperience(BaseModel):
     end_date: str = ""
     responsibilities: List[str] = Field(default_factory=list)
     achievements: List[str] = Field(default_factory=list)
+    change_type: Literal["keep", "modified", "restructured", "new_wording"] = "keep"
 
 
 class Project(BaseModel):
@@ -32,12 +34,14 @@ class Project(BaseModel):
     description: str = ""
     highlights: List[str] = Field(default_factory=list)
     tech_stack: List[str] = Field(default_factory=list)
+    change_type: Literal["keep", "modified", "restructured", "new_wording"] = "keep"
 
 
 class Skill(BaseModel):
     """技能"""
     category: str = ""       # 如：编程语言、框架、工具
     items: List[str] = Field(default_factory=list)
+    change_type: Literal["keep", "modified", "restructured", "new_wording"] = "keep"
 
 
 class Resume(BaseModel):
@@ -66,6 +70,8 @@ class Resume(BaseModel):
             parts.append("\n【教育背景】")
             for edu in self.education:
                 parts.append(f"- {edu.school} | {edu.degree} | {edu.major} ({edu.start_date}-{edu.end_date})")
+                if edu.description:
+                    parts.append(f"  {edu.description}")
 
         if self.work_experiences:
             parts.append("\n【工作经历】")

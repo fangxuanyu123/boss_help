@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ resume.name }} - 简历</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 紧凑页眉 -->
+    <div class="header">
+        <div class="name">{{ resume.name }}</div>
+        <div class="meta">
+            {% if resume.phone %}<span>{{ resume.phone }}</span>{% endif %}
+            {% if resume.email %}<span>{{ resume.email }}</span>{% endif %}
+            <span>意向: {{ resume.title or job_title }}</span>
+        </div>
+    </div>
+
+    {% if resume.summary %}
+    <div class="section">
+        <div class="section-title">个人总结</div>
+        <div class="summary">{{ resume.summary }}</div>
+    </div>
+    {% endif %}
+
+    <div class="content">
+        <div class="col">
+            {% if has_work %}
+            <div class="section">
+                <div class="section-title">工作经历</div>
+                {% for exp in resume.work_experiences %}
+                <div class="entry">
+                    <div class="entry-header">
+                        <span class="entry-title">{{ exp.position }}</span>
+                        <span class="entry-date">{{ exp.start_date }} - {{ exp.end_date }}</span>
+                    </div>
+                    <div class="entry-subtitle">{{ exp.company }}</div>
+                    <ul class="entry-detail">
+                        {% for resp in exp.responsibilities %}
+                        <li>{{ resp }}</li>
+                        {% endfor %}
+                        {% for ach in exp.achievements %}
+                        <li><strong>{{ ach }}</strong></li>
+                        {% endfor %}
+                    </ul>
+                    {% if exp.change_type != 'keep' %}<span class="change-badge change-{{ exp.change_type }}">{{ exp.change_type }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if has_education %}
+            <div class="section">
+                <div class="section-title">教育背景</div>
+                {% for edu in resume.education %}
+                <div class="entry">
+                    <div class="entry-header">
+                        <span class="entry-title">{{ edu.school }}</span>
+                        <span class="entry-date">{{ edu.start_date }} - {{ edu.end_date }}</span>
+                    </div>
+                    <div class="entry-subtitle">{{ edu.degree }} · {{ edu.major }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="col">
+            {% if has_projects %}
+            <div class="section">
+                <div class="section-title">项目经历</div>
+                {% for proj in resume.projects %}
+                <div class="entry">
+                    <div class="entry-header">
+                        <span class="entry-title">{{ proj.name }}</span>
+                        <span class="entry-date">{{ proj.start_date }} - {{ proj.end_date }}</span>
+                    </div>
+                    <div class="entry-subtitle">{{ proj.role }}</div>
+                    <ul class="entry-detail">
+                        {% for h in proj.highlights %}
+                        <li>{{ h }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% if proj.tech_stack %}
+                    <div style="font-size:8pt;color:#999;">{{ proj.tech_stack | join('、') }}</div>
+                    {% endif %}
+                    {% if proj.change_type != 'keep' %}<span class="change-badge change-{{ proj.change_type }}">{{ proj.change_type }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if has_skills %}
+            <div class="section">
+                <div class="section-title">技能</div>
+                <div class="skill-list">
+                    {% for skill in resume.skills %}
+                    <div><strong>{{ skill.category }}:</strong> {{ skill.items | join('、') }}
+                    {% if skill.change_type != 'keep' %}<span class="change-badge change-{{ skill.change_type }}">{{ skill.change_type }}</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if has_certifications %}
+            <div class="section">
+                <div class="section-title">证书</div>
+                <div style="font-size:9pt;">{{ resume.certifications | join('、') }}</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

@@ -1,5 +1,6 @@
 from .resume_analysis_agent import ResumeAnalysisAgent
-from .rag_retrieval_agent import RAGRetrievalAgent
+from .role_analyzer_agent import RoleAnalyzerAgent
+from .gap_analyzer_agent import GapAnalyzerAgent
 from .optimization_agent import OptimizationAgent
 from .resume_generation_agent import ResumeGenerationAgent
 from .job_matching_agent import JobMatchingAgent
