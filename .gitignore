@@ -21,3 +21,4 @@ output/*.md
 !output/.gitkeep
 
 .claude
+.env

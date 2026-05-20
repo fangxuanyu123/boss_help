@@ -73,8 +73,7 @@ class RoleAnalyzerAgent:
 9. preferred: 加分项列表（3-5条）
 10. tech_keywords: 技术栈关键词（8-15个）
 11. soft_skills: 软技能要求（3-5个）
-12. description: 保留JD原文
-13. source: 固定为 "jd"
+
 
 返回 JSON：
 {{
@@ -89,8 +88,6 @@ class RoleAnalyzerAgent:
     "preferred": [],
     "tech_keywords": [],
     "soft_skills": [],
-    "description": "{jd_text[:200]}...",
-    "source": "jd"
 }}
 """
         response = self.client.chat.completions.create(
