@@ -1,6 +1,7 @@
 """简历数据模型"""
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
+from enum import Enum
 
 
 class Education(BaseModel):
@@ -102,3 +103,37 @@ class Resume(BaseModel):
             parts.append(f"\n【证书】: {', '.join(self.certifications)}")
 
         return "\n".join(parts)
+
+
+class DiffAction(str, Enum):
+    rewrite = "rewrite"
+    append = "append"
+    reorder = "reorder"
+    highlight = "highlight"
+    delete = "delete"
+
+
+class DiffChange(BaseModel):
+    """单条改动"""
+    target: str = ""
+    action: DiffAction = DiffAction.rewrite
+    original: str = ""
+    rewritten: str = ""
+    item: str = ""
+    reason: str = ""
+    section_label: str = ""
+
+
+class DiffResult(BaseModel):
+    """改动清单"""
+    changes: List[DiffChange] = Field(default_factory=list)
+    unchanged_summary: str = ""
+    estimated_impact: str = ""
+
+
+class CoherenceReview(BaseModel):
+    """连贯性审查结果"""
+    coherence_score: float = 10.0
+    passed: bool = True
+    issues: List[str] = Field(default_factory=list)
+    patches: List[DiffChange] = Field(default_factory=list)
