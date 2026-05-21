@@ -19,6 +19,7 @@ class GapAnalyzerAgent:
         resume: Resume,
         job: JobRequirement,
         resume_analysis: Optional[Dict[str, Any]] = None,
+        critique: str | None = None,
     ) -> Dict[str, Any]:
         """对比简历与岗位画像，输出差距分析"""
         analysis_context = ""
@@ -112,10 +113,20 @@ class GapAnalyzerAgent:
     "priority_actions": ["具体动作1", "具体动作2", "具体动作3"]
 }}
 """
+        system_content = (
+            "你是一位资深招聘专家，为各行业求职者做岗位匹配分析。"
+            "你的核心能力：能结合行业上下文做判断——在自动驾驶公司实习意味着大概率接触过ROS，"
+            "做ADAS意味着涉及传感器融合，不被'经历描述里没出现这个词'所蒙蔽。"
+            "你的分析前后一致，不会把一个技能同时列为'对齐点'和'缺失'。"
+            "你只做简历优化，不建议用户去学新技能。你从不说正确的废话。"
+        )
+        if critique:
+            system_content += f"\n\n=== 上一轮输出的改进反馈 ===\n{critique}\n请针对以上反馈，修正你上一轮的输出。"
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一位资深招聘专家，为各行业求职者做岗位匹配分析。你的核心能力：能结合行业上下文做判断——在自动驾驶公司实习意味着大概率接触过ROS，做ADAS意味着涉及传感器融合，不被'经历描述里没出现这个词'所蒙蔽。你的分析前后一致，不会把一个技能同时列为'对齐点'和'缺失'。你只做简历优化，不建议用户去学新技能。你从不说正确的废话。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
