@@ -1,6 +1,9 @@
 """Reflection 循环引擎 —— 调用 Agent → 评估 → 反馈 → 重试"""
+import logging
 from typing import Callable, Dict, Any, Tuple, List
 from evaluators.base_evaluator import BaseEvaluator, EvaluationResult
+
+logger = logging.getLogger(__name__)
 
 
 class ReflectionLoop:
@@ -30,26 +33,35 @@ class ReflectionLoop:
             context: 传给评估器的上下文
 
         Returns:
-            (final_output, evaluation_history) —— 每轮评估的结果列表
+            (final_output, evaluation_history) —— 返回通过轮次的输出，
+            若全部未通过则返回最高分轮次的输出。
         """
         evaluations: List[EvaluationResult] = []
         output = agent_callable(None)
+        best_output = output
+        best_score = -1.0
 
         for attempt in range(self.max_retries + 1):
-            # 将 output 转为 dict 供评估器使用
             output_dict = self._to_dict(output)
 
             result = self.evaluator.evaluate(output_dict, context)
             evaluations.append(result)
 
+            if result.score > best_score:
+                best_score = result.score
+                best_output = output
+
             if result.passed:
-                break
+                logger.debug("Reflection passed on attempt %d (score: %.1f)", attempt + 1, result.score)
+                return output, evaluations
 
             if attempt < self.max_retries:
+                logger.debug("Reflection retry %d/%d (score: %.1f, threshold: %.1f)", attempt + 1, self.max_retries, result.score, result.threshold)
                 critique = self._build_critique(result)
                 output = agent_callable(critique)
 
-        return output, evaluations
+        logger.debug("Reflection exhausted all retries, returning best score (%.1f)", best_score)
+        return best_output, evaluations
 
     def _to_dict(self, output: Any) -> Dict[str, Any]:
         """将 Agent 输出转为 dict。JobRequirement 等 Pydantic 模型需转换。"""
@@ -57,6 +69,7 @@ class ReflectionLoop:
             return output.model_dump()
         if isinstance(output, dict):
             return output
+        logger.warning("ReflectionLoop: unexpected output type %s, wrapping as string", type(output).__name__)
         return {"output": str(output)}
 
     def _build_critique(self, result: EvaluationResult) -> str:
@@ -68,11 +81,11 @@ class ReflectionLoop:
         if result.strengths:
             parts.append("做得好的地方：")
             for s in result.strengths:
-                parts.append(f"  ✅ {s}")
+                parts.append(f"  [PASS] {s}")
         if result.issues:
             parts.append("需要改进的地方：")
             for i in result.issues:
-                parts.append(f"  ❌ {i}")
+                parts.append(f"  [ISSUE] {i}")
         if result.suggestion:
             parts.append(f"改进方向：{result.suggestion}")
         parts.append("请在重新生成时针对以上反馈修正输出。")
