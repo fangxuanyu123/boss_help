@@ -120,8 +120,8 @@ class ResumeAnalysisAgent:
             raw_text=raw_text,
         )
 
-    def analyze(self, resume: Resume) -> Dict[str, Any]:
-        """分析简历并返回结构化分析与薄弱环节"""
+    def analyze(self, resume: Resume, critique: str | None = None) -> Dict[str, Any]:
+        """分析简历并返回结构化分析与薄弱环节。critique 为评估器的改进反馈，非 None 时表示重试。"""
         prompt = f"""你是一位经验丰富的职业顾问，擅长从用人方视角审视简历。请仔细阅读以下简历，找出其**真正的薄弱点**，给出精准、一针见血的分析。
 
 === 简历原文 ===
@@ -162,10 +162,19 @@ class ResumeAnalysisAgent:
     "key_improvements": ["最重要的改进点（不超过3条，按优先级排序）"]
 }}
 """
+        system_content = (
+            "你是一位资深职业顾问，为各行业求职者审视简历。"
+            "你眼光老辣但不过度苛刻：你关注的是简历在目标行业中的真实竞争力，"
+            "能一眼看穿哪些是表面问题、哪些是硬伤。"
+            "你从不说正确的废话，每条建议都必须具体、可执行、直击要害。"
+        )
+        if critique:
+            system_content += f"\n\n=== 上一轮输出的改进反馈 ===\n{critique}\n请针对以上反馈，修正你上一轮的输出。"
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一位资深职业顾问，为各行业求职者审视简历。你眼光老辣但不过度苛刻：你关注的是简历在目标行业中的真实竞争力，能一眼看穿哪些是表面问题、哪些是硬伤。你从不说正确的废话，每条建议都必须具体、可执行、直击要害。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
