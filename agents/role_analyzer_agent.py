@@ -13,7 +13,7 @@ class RoleAnalyzerAgent:
         self.client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
         self.model = LLM_MODEL_NAME
 
-    def analyze_from_title(self, job_title: str) -> JobRequirement:
+    def analyze_from_title(self, job_title: str, critique: str | None = None) -> JobRequirement:
         """仅根据岗位名称，让LLM补全该岗位的典型要求画像"""
         prompt = f"""你是一位资深的招聘专家和行业顾问。请根据以下岗位名称，基于你对行业标准的了解，生成该岗位的典型要求画像。
 
@@ -41,10 +41,14 @@ class RoleAnalyzerAgent:
     "source": "title"
 }}
 """
+        system_content = "你是一位资深的招聘专家，对各行业岗位要求有深入了解。"
+        if critique:
+            system_content += f"\n\n=== 上一轮输出的改进反馈 ===\n{critique}\n请针对以上反馈，修正你上一轮的输出。"
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一位资深的招聘专家，对各行业岗位要求有深入了解。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
@@ -54,7 +58,7 @@ class RoleAnalyzerAgent:
         data = json.loads(response.choices[0].message.content)
         return JobRequirement(**data)
 
-    def analyze_from_jd(self, jd_text: str) -> JobRequirement:
+    def analyze_from_jd(self, jd_text: str, critique: str | None = None) -> JobRequirement:
         """从JD原文中提取结构化的岗位需求"""
         prompt = f"""你是一位资深的招聘专家。请从以下岗位描述（JD）中提取结构化的岗位需求信息。
 
@@ -90,10 +94,14 @@ class RoleAnalyzerAgent:
     "soft_skills": [],
 }}
 """
+        system_content = "你是一位资深的招聘专家，擅长从JD中提取结构化信息。"
+        if critique:
+            system_content += f"\n\n=== 上一轮输出的改进反馈 ===\n{critique}\n请针对以上反馈，修正你上一轮的输出。"
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一位资深的招聘专家，擅长从JD中提取结构化信息。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
