@@ -11,6 +11,11 @@ from agents.gap_analyzer_agent import GapAnalyzerAgent
 from agents.optimization_agent import OptimizationAgent
 from agents.resume_generation_agent import ResumeGenerationAgent
 from agents.job_matching_agent import JobMatchingAgent
+from agents.reflection_loop import ReflectionLoop
+from evaluators.resume_analysis_evaluator import ResumeAnalysisEvaluator
+from evaluators.role_analyzer_evaluator import RoleAnalyzerEvaluator
+from evaluators.gap_analyzer_evaluator import GapAnalyzerEvaluator
+from evaluators.optimization_evaluator import OptimizationEvaluator
 
 from generators.template_engine import TemplateEngine
 from generators.pdf_renderer import PDFRenderer
@@ -45,7 +50,18 @@ def get_generators():
     return TemplateEngine(), PDFRenderer()
 
 
+@st.cache_resource
+def get_reflection_loops():
+    return {
+        "analysis": ReflectionLoop(ResumeAnalysisEvaluator(), max_retries=2),
+        "role":     ReflectionLoop(RoleAnalyzerEvaluator(), max_retries=2),
+        "gap":      ReflectionLoop(GapAnalyzerEvaluator(), max_retries=2),
+        "optimization": ReflectionLoop(OptimizationEvaluator(), max_retries=2),
+    }
+
+
 agents = get_agents()
+reflection_loops = get_reflection_loops()
 template_engine, pdf_renderer = get_generators()
 templates = template_engine.list_templates()
 
@@ -62,6 +78,7 @@ defaults = {
     "pdf_bytes": None,
     "current_template": templates[0]["id"],
     "job_title_input": "",
+    "reflection_logs": {},
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -149,34 +166,55 @@ if start_btn:
                 st.session_state.resume = structured_resume  # 替换空壳Resume
                 st.write(f"✅ 结构化提取完成: {len(structured_resume.work_experiences)}段工作经历, {len(structured_resume.projects)}个项目, {len(structured_resume.skills)}类技能")
 
-                # Step 2: 岗位画像
+                # Step 2: 岗位画像（with Reflection）
                 st.write("🔍 分析目标岗位画像...")
                 if jd_text.strip():
-                    st.session_state.job_profile = agents["role"].analyze_from_jd(jd_text)
+                    st.session_state.job_profile, role_evals = reflection_loops["role"].run(
+                        agent_callable=lambda critique: agents["role"].analyze_from_jd(jd_text, critique=critique),
+                        context={"jd_text": jd_text},
+                    )
                 else:
-                    st.session_state.job_profile = agents["role"].analyze_from_title(job_title)
+                    st.session_state.job_profile, role_evals = reflection_loops["role"].run(
+                        agent_callable=lambda critique: agents["role"].analyze_from_title(job_title, critique=critique),
+                        context={},
+                    )
+                st.session_state.reflection_logs["role"] = role_evals
                 jp = st.session_state.job_profile
                 st.write(f"✅ 岗位画像完成: {jp.title} ({jp.level or '层级未指定'})")
 
-                # Step 2.5: 深度分析简历（推断隐式技能和结构化信息）
+                # Step 2.5: 深度分析简历（with Reflection）
                 st.write("🔬 深度分析简历内容...")
-                st.session_state.resume_analysis = agents["analysis"].analyze(resume)
+                st.session_state.resume_analysis, analysis_evals = reflection_loops["analysis"].run(
+                    agent_callable=lambda critique: agents["analysis"].analyze(structured_resume, critique=critique),
+                    context={"resume_raw_text": resume.raw_text},
+                )
+                st.session_state.reflection_logs["analysis"] = analysis_evals
                 st.write("✅ 简历深度分析完成")
 
-                # Step 3: Gap 分析（传入简历分析结果）
+                # Step 3: Gap 分析（with Reflection）
                 st.write("📊 对比简历与岗位差距...")
-                st.session_state.gap_analysis = agents["gap"].analyze(
-                    resume, st.session_state.job_profile,
-                    resume_analysis=st.session_state.resume_analysis,
+                st.session_state.gap_analysis, gap_evals = reflection_loops["gap"].run(
+                    agent_callable=lambda critique: agents["gap"].analyze(
+                        structured_resume, st.session_state.job_profile,
+                        resume_analysis=st.session_state.resume_analysis,
+                        critique=critique,
+                    ),
+                    context={},
                 )
+                st.session_state.reflection_logs["gap"] = gap_evals
                 st.write("✅ 差距分析完成")
 
-                # Step 4: 优化建议
+                # Step 4: 优化建议（with Reflection）
                 st.write("💡 生成优化建议...")
-                st.session_state.suggestions = agents["optimization"].generate_suggestions(
-                    st.session_state.gap_analysis,
-                    st.session_state.job_profile,
+                st.session_state.suggestions, opt_evals = reflection_loops["optimization"].run(
+                    agent_callable=lambda critique: agents["optimization"].generate_suggestions(
+                        st.session_state.gap_analysis,
+                        st.session_state.job_profile,
+                        critique=critique,
+                    ),
+                    context={"gap_analysis": st.session_state.gap_analysis},
                 )
+                st.session_state.reflection_logs["optimization"] = opt_evals
                 st.write("✅ 优化建议生成完成")
 
                 # Step 5: 生成优化简历
@@ -337,6 +375,30 @@ if st.session_state.optimized_resume:
                         st.markdown(f"建议: {opt.get('suggestion', '')}")
                         if opt.get("example"):
                             st.code(opt.get("example", ""), language=None)
+
+            st.subheader("🔍 质量评估")
+            logs = st.session_state.get("reflection_logs", {})
+            for module_name, module_label in [
+                ("analysis", "简历分析"),
+                ("role", "岗位画像"),
+                ("gap", "差距分析"),
+                ("optimization", "优化建议"),
+            ]:
+                evals = logs.get(module_name, [])
+                if not evals:
+                    continue
+                final = evals[-1]
+                passed = final.passed
+                icon = "✅" if passed else "⚠️"
+                with st.expander(f"{icon} {module_label} — {final.score:.1f}/10", expanded=not passed):
+                    for i, e in enumerate(evals):
+                        round_label = f"第{i+1}轮" if i > 0 else "首轮"
+                        status_icon = "✅" if e.passed else "🔄"
+                        st.caption(f"{status_icon} {round_label}: {e.score:.1f}/10")
+                    if final.issues:
+                        st.markdown("**发现问题：**")
+                        for issue in final.issues:
+                            st.markdown(f"- {issue}")
 
             st.subheader("📋 优先行动")
             if st.session_state.suggestions:
