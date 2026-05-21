@@ -60,13 +60,20 @@ class BaseEvaluator(ABC):
             temperature=0.2,
         )
 
-        data = json.loads(response.choices[0].message.content)
-        score = float(data.get("score", 7.0))
-        return EvaluationResult(
-            score=score,
-            passed=score >= self.threshold,
-            strengths=data.get("strengths", []),
-            issues=data.get("issues", []),
-            suggestion=data.get("suggestion", ""),
-            threshold=self.threshold,
-        )
+        try:
+            data = json.loads(response.choices[0].message.content)
+            score = float(data.get("score", 0.0))
+            return EvaluationResult(
+                score=score,
+                passed=score >= self.threshold,
+                strengths=data.get("strengths", []),
+                issues=data.get("issues", []),
+                suggestion=data.get("suggestion", ""),
+                threshold=self.threshold,
+            )
+        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+            return EvaluationResult(
+                score=0.0,
+                passed=False,
+                issues=[f"评估调用失败：{e}"],
+            )
