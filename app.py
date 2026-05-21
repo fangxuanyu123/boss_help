@@ -448,19 +448,21 @@ if st.session_state.optimized_resume:
     with tabs[2]:
         st.subheader("📥 下载优化简历")
 
-        download_tpl = st.selectbox(
-            "切换排版风格",
-            template_names,
-            key="download_tpl_select",
+        styles = template_engine.list_templates()
+        style_names = [f"{s['name']} — {s['description']}" for s in styles]
+        download_style = st.selectbox(
+            "排版风格",
+            style_names,
+            key="download_style_select",
         )
-        download_tpl_id = templates[template_names.index(download_tpl)]["id"]
+        download_style_id = styles[style_names.index(download_style)]["id"]
 
-        if download_tpl_id != st.session_state.current_template or st.button("🔄 用此模板重新渲染", key="re_render_btn"):
-            st.session_state.current_template = download_tpl_id
+        if download_style_id != st.session_state.current_template or st.button("🔄 用此风格重新渲染", key="re_render_btn"):
+            st.session_state.current_template = download_style_id
             html = template_engine.render(
                 st.session_state.optimized_resume,
                 st.session_state.job_title_input,
-                download_tpl_id,
+                download_style_id,
             )
             st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
 
@@ -470,12 +472,12 @@ if st.session_state.optimized_resume:
                 st.download_button(
                     label="📥 下载 PDF 简历",
                     data=st.session_state.pdf_bytes,
-                    file_name=f"简历_{st.session_state.optimized_resume.name}_{download_tpl_id}.pdf",
+                    file_name=f"简历_{st.session_state.optimized_resume.name}_{download_style_id}.pdf",
                     mime="application/pdf",
                     use_container_width=True,
                 )
             with col_dl2:
-                st.markdown(f"📄 模板: **{download_tpl}**")
+                st.markdown(f"🎨 风格: **{download_style}**")
                 st.caption(f"文件大小: {len(st.session_state.pdf_bytes) / 1024:.1f} KB")
 
             st.divider()
