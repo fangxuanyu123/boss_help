@@ -73,6 +73,9 @@ defaults = {
     "job_profile": None,
     "gap_analysis": None,
     "suggestions": None,
+    "diff_result": None,
+    "coherence_review": None,
+    "match_rounds": [],
     "optimized_resume": None,
     "match_result": None,
     "pdf_bytes": None,
@@ -217,22 +220,32 @@ if start_btn:
                 st.session_state.reflection_logs["optimization"] = opt_evals
                 st.write("✅ 优化建议生成完成")
 
-                # Step 5: 生成优化简历
-                st.write("✍️ 生成优化后的简历...")
-                st.session_state.optimized_resume = agents["generation"].generate(
-                    resume,
-                    st.session_state.suggestions,
-                    st.session_state.job_profile,
-                )
-                st.write("✅ 优化简历生成完成")
+                # Step 5: 生成优化简历（Diff-based + 匹配度闭环）
+                st.write("✍️ 生成优化简历（手术式微调）...")
 
-                # Step 6: 岗位匹配分析
-                st.write("📈 计算岗位匹配度...")
-                st.session_state.match_result = agents["matching"].match(
-                    st.session_state.optimized_resume,
-                    st.session_state.job_profile,
+                from agents.match_loop import MatchLoop
+                match_loop = MatchLoop(
+                    agents["generation"],
+                    agents["matching"],
+                    threshold=70,
+                    max_rounds=2,
                 )
-                st.write("✅ 匹配分析完成")
+                st.session_state.optimized_resume, match_rounds, st.session_state.match_result = \
+                    match_loop.run(
+                        structured_resume,
+                        st.session_state.suggestions,
+                        st.session_state.job_profile,
+                    )
+                st.session_state.optimized_resume.raw_text = resume.raw_text
+                st.session_state.match_rounds = match_rounds
+
+                last_round = match_rounds[-1] if match_rounds else {}
+                st.session_state.diff_result = last_round.get("diff")
+                st.session_state.coherence_review = last_round.get("coherence")
+
+                final_score = st.session_state.match_result.get("match_score", 0)
+                num_rounds = len(match_rounds)
+                st.write(f"✅ 优化完成: {num_rounds}轮, 最终匹配度 {final_score}/100")
 
                 # Step 7: 生成 PDF
                 st.write("🖨️ 渲染PDF...")
@@ -259,38 +272,61 @@ if st.session_state.optimized_resume:
 
     # ---- Tab 1: 优化预览 ----
     with tabs[0]:
-        st.subheader("简历对比")
-        col_orig, col_opt = st.columns(2)
+        diff = st.session_state.get("diff_result")
+        coherence = st.session_state.get("coherence_review")
 
-        with col_orig:
-            st.markdown("**📋 原始简历**")
-            with st.container(border=True, height=500):
-                st.text(st.session_state.resume_raw_text[:5000])
+        # 改动清单
+        if diff and diff.changes:
+            st.subheader(f"🔧 改动清单（共 {len(diff.changes)} 处）")
+            if diff.estimated_impact:
+                st.caption(diff.estimated_impact)
 
-        with col_opt:
-            st.markdown("**✨ 优化后简历**")
-            with st.container(border=True, height=500):
-                opt = st.session_state.optimized_resume
-                change_labels = {
-                    "keep": ("🟢", "green"),
-                    "modified": ("🟡", "orange"),
-                    "restructured": ("🔵", "blue"),
-                    "new_wording": ("🟣", "violet"),
-                }
+            action_labels = {
+                "rewrite": ("🟡 改写", "orange"),
+                "append": ("🟢 补充", "green"),
+                "highlight": ("🔵 强化", "blue"),
+                "delete": ("🔴 删除", "red"),
+                "reorder": ("🟣 调整顺序", "violet"),
+            }
 
-                def badge(ct: str) -> str:
-                    icon, _ = change_labels.get(ct, ("⚪", "grey"))
-                    return f" {icon}`{ct}`"
+            for i, c in enumerate(diff.changes):
+                icon, _ = action_labels.get(c.action.value, ("⚪ 改写", "grey"))
+                label = f"{icon} {c.section_label}"
+                if c.reason:
+                    label += f" — {c.reason}"
+                with st.expander(label, expanded=(i < 3)):
+                    if c.original:
+                        st.markdown(f"**原文:** {c.original}")
+                    if c.rewritten:
+                        st.markdown(f"**改后:** {c.rewritten}")
+                    if c.item:
+                        st.markdown(f"**新增:** `{c.item}`")
 
+            if diff.unchanged_summary:
+                st.caption(f"💡 {diff.unchanged_summary}")
+
+            # 连贯性审查
+            if coherence:
+                co_passed = coherence.coherence_score >= 7.0
+                co_icon = "✅" if co_passed else "⚠️"
+                st.info(f"{co_icon} 全文连贯性: {coherence.coherence_score:.1f}/10")
+                if coherence.issues:
+                    for issue in coherence.issues:
+                        st.caption(f"  - {issue}")
+
+        # 完整优化后简历
+        with st.expander("📋 完整优化后简历（展开查看）"):
+            opt = st.session_state.optimized_resume
+            if opt:
                 st.markdown(f"**{opt.name}** | {opt.phone} | {opt.email}")
-                st.markdown(f"*求职意向: {opt.title}*")
+                st.markdown(f"*{opt.title}*")
                 if opt.summary:
                     st.markdown(f"> {opt.summary}")
 
                 if opt.work_experiences:
                     st.markdown("##### 工作经历")
                     for exp in opt.work_experiences:
-                        st.markdown(f"**{exp.position}** @ {exp.company}  *{exp.start_date} - {exp.end_date}*{badge(exp.change_type)}")
+                        st.markdown(f"**{exp.position}** @ {exp.company}  *{exp.start_date} - {exp.end_date}*")
                         for r in exp.responsibilities:
                             st.markdown(f"- {r}")
                         for a in exp.achievements:
@@ -299,7 +335,7 @@ if st.session_state.optimized_resume:
                 if opt.projects:
                     st.markdown("##### 项目经历")
                     for proj in opt.projects:
-                        st.markdown(f"**{proj.name}** ({proj.role})  *{proj.start_date} - {proj.end_date}*{badge(proj.change_type)}")
+                        st.markdown(f"**{proj.name}** ({proj.role})")
                         for h in proj.highlights:
                             st.markdown(f"- {h}")
                         if proj.tech_stack:
@@ -308,7 +344,10 @@ if st.session_state.optimized_resume:
                 if opt.skills:
                     st.markdown("##### 技能")
                     for skill in opt.skills:
-                        st.markdown(f"- **{skill.category}**: {', '.join(skill.items)}{badge(skill.change_type)}")
+                        st.markdown(f"- **{skill.category}**: {', '.join(skill.items)}")
+
+                if opt.certifications:
+                    st.markdown(f"**证书:** {', '.join(opt.certifications)}")
 
     # ---- Tab 2: 分析报告 ----
     with tabs[1]:
