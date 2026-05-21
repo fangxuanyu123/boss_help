@@ -29,9 +29,12 @@ class JobMatchingAgent:
 1. **match_score**: 匹配度评分 (0-100)
 2. **match_strengths**: 简历中与岗位高度匹配的方面
 3. **match_gaps**: 简历与岗位要求有差距的方面（带建议）
-4. **specific_actions**: 提升匹配度的具体行动
-5. **keyword_match**: 关键词匹配情况
-6. **summary**: 整体匹配总结
+4. **uncovered_gaps**: 当前简历**修改后仍未能覆盖**的关键差距（最多3条）。
+   如果 match_score >= 70，此数组可为空。
+   每条必须有具体的 suggestion_for_diff（告诉DiffAgent下一步应该怎么改）。
+5. **specific_actions**: 提升匹配度的具体行动
+6. **keyword_match**: 关键词匹配情况
+7. **summary**: 整体匹配总结
 
 返回 JSON：
 {{
@@ -39,6 +42,9 @@ class JobMatchingAgent:
     "match_strengths": ["优势1", "优势2"],
     "match_gaps": [
         {{"requirement": "岗位要求", "current_status": "当前状态", "suggestion": "改进建议"}}
+    ],
+    "uncovered_gaps": [
+        {{"gap": "差距描述", "priority": 1, "suggestion_for_diff": "具体的改动建议（如：在项目X的highlights中补充Y）"}}
     ],
     "specific_actions": ["具体行动1", "具体行动2"],
     "keyword_match": {{
