@@ -44,8 +44,18 @@ class DiffApplier:
         if not parts:
             raise ApplyError("target 为空")
 
-        root = parts[0]
+        # Parse root part: "work_experiences[0]" -> field="work_experiences", index="[0]"
+        root_part = parts[0]
+        m = re.match(r'^(\w+)(\[\d+\])?$', root_part)
+        if not m:
+            raise ApplyError(f"根字段格式错误: {root_part}")
+
+        root = m.group(1)
+        root_index = m.group(2)  # e.g., "[0]" or None
+
         path = parts[1:] if len(parts) > 1 else []
+        if root_index:
+            path = [root_index] + path
 
         if root == "summary":
             self._apply_summary(resume, change)
@@ -96,10 +106,21 @@ class DiffApplier:
         if not sub_path:
             raise ApplyError(f"{field_name}[{idx}] 需要指定子字段，如 responsibilities[0]")
 
-        sub_field = sub_path[0]
+        # Parse sub-field part: "responsibilities[0]" -> field="responsibilities", index="[0]"
+        sub_part = sub_path[0]
+        m = re.match(r'^(\w+)(\[\d+\])?$', sub_part)
+        if not m:
+            raise ApplyError(f"{field_name}[{idx}] 子字段格式错误: {sub_part}")
+
+        sub_field = m.group(1)
+        sub_index = m.group(2)  # e.g., "[0]" or None
+
+        remaining_path = sub_path[1:]
+        if sub_index:
+            remaining_path = [sub_index] + remaining_path
 
         if sub_field in ("responsibilities", "achievements", "highlights", "items", "tech_stack"):
-            self._apply_string_list(item, sub_field, sub_path[1:], change)
+            self._apply_string_list(item, sub_field, remaining_path, change)
         else:
             if change.action == DiffAction.rewrite and change.rewritten and hasattr(item, sub_field):
                 setattr(item, sub_field, change.rewritten)
