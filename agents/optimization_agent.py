@@ -17,6 +17,7 @@ class OptimizationAgent:
         self,
         gap_analysis: Dict[str, Any],
         job: JobRequirement,
+        critique: str | None = None,
     ) -> Dict[str, Any]:
         """基于差距分析生成具体优化建议"""
         # 处理关键词匹配
@@ -80,10 +81,14 @@ class OptimizationAgent:
     "priority_actions": ["最先做的3件事"]
 }}
 """
+        system_content = "你是一位资深的简历优化专家，擅长提供具体、可执行的简历优化建议。强调不编造经历，只重组和润色。"
+        if critique:
+            system_content += f"\n\n=== 上一轮输出的改进反馈 ===\n{critique}\n请针对以上反馈，修正你上一轮的输出。"
+
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "你是一位资深的简历优化专家，擅长提供具体、可执行的简历优化建议。强调不编造经历，只重组和润色。"},
+                {"role": "system", "content": system_content},
                 {"role": "user", "content": prompt},
             ],
             response_format={"type": "json_object"},
