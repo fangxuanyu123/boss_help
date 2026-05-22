@@ -98,7 +98,7 @@ def main():
         for i, job in enumerate(jobs, 1):
             print(f"\n{'─'*50}")
             print(f"  [{i}] {job.title}")
-            print(f"  公司: {job.company}")
+            print(f"  公司: {job.company}  [{job.source}]")
             print(f"  薪资: {job.salary or '未标注'}")
             print(f"  城市: {job.city}")
             print(f"  经验: {job.experience} | 学历: {job.education}")

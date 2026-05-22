@@ -59,7 +59,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         lines = [f"## 岗位搜索结果: {title}", f"关键词: {', '.join(keywords)}", f"共找到 {len(jobs)} 个岗位\n"]
         for i, j in enumerate(jobs, 1):
             lines.append(f"### {i}. {j.title}")
-            lines.append(f"- 公司: {j.company}")
+            lines.append(f"- 公司: {j.company}  [{j.source}]")
             lines.append(f"- 薪资: {j.salary}")
             lines.append(f"- 城市: {j.city}")
             lines.append(f"- 经验/学历: {j.experience} | {j.education}")

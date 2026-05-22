@@ -522,7 +522,8 @@ if st.session_state.optimized_resume:
                         col_l, col_r = st.columns([3, 1])
                         with col_l:
                             st.markdown(f"### {i+1}. {job.title}")
-                            st.markdown(f"**{job.company}** | {job.salary} | {job.city}")
+                            source_badge = f" `[{job.source}]`" if job.source else ""
+                            st.markdown(f"**{job.company}**{source_badge} | {job.salary} | {job.city}")
                             st.caption(f"{job.experience} | {job.education}")
                             if job.tags:
                                 st.caption(" / ".join(job.tags))
