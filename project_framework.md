@@ -80,7 +80,6 @@
 | 评估器 | 文件 | 评估目标 |
 |--------|------|----------|
 | BaseEvaluator | `base_evaluator.py` | 抽象基类，定义 evaluate() 接口和 EvaluationResult |
-| ResumeAnalysisEvaluator | `resume_analysis_evaluator.py` | 简历分析的深度感+保真度 |
 | RoleAnalyzerEvaluator | `role_analyzer_evaluator.py` | 岗位画像的抓重点+一致性 |
 | GapAnalyzerEvaluator | `gap_analyzer_evaluator.py` | 差距分析的内部一致性+保真度+深度感 |
 | OptimizationEvaluator | `optimization_evaluator.py` | 优化建议的抓重点+深度感 |
@@ -91,9 +90,7 @@
 generators/
 ├── style_agent.py             # LLM动态HTML生成（4种风格：minimal/professional/creative/compact）
 ├── template_engine.py         # StyleAgent 包装器（提供 list_templates + render 接口）
-├── pdf_renderer.py            # Playwright + Chromium → PDF渲染
-├── template_config.yaml       # 已废弃（保留兼容）
-└── templates/                 # 已废弃（保留兼容）
+└── pdf_renderer.py            # Playwright + Chromium → PDF渲染
 ```
 
 ### 4. 数据模型 (`models/`)
@@ -203,7 +200,6 @@ boss_help/
 ├── evaluators/
 │   ├── __init__.py
 │   ├── base_evaluator.py         # 评估器基类 + EvaluationResult
-│   ├── resume_analysis_evaluator.py
 │   ├── role_analyzer_evaluator.py
 │   ├── gap_analyzer_evaluator.py
 │   └── optimization_evaluator.py
@@ -211,9 +207,7 @@ boss_help/
 │   ├── __init__.py
 │   ├── style_agent.py            # LLM动态HTML生成
 │   ├── template_engine.py        # StyleAgent包装器
-│   ├── pdf_renderer.py           # PDF渲染器
-│   ├── template_config.yaml      # 已废弃
-│   └── templates/                # 已废弃
+│   └── pdf_renderer.py           # PDF渲染器
 ├── models/
 │   ├── __init__.py
 │   ├── resume.py                 # Resume + Diff模型

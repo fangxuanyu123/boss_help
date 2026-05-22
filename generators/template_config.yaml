@@ -1,9 +1,0 @@
-- id: modern
-  name: 现代简约
-  description: 双栏布局，蓝色主色调，适合IT/互联网岗位
-- id: classic
-  name: 经典传统
-  description: 单栏衬线字体，适合金融/法律/制造业等传统行业
-- id: compact
-  name: 紧凑单页
-  description: 高信息密度单页，适合校招/初级岗位
