@@ -47,7 +47,8 @@ def search_jobs(
     Returns:
         按 match_score 降序排列的岗位列表
     """
-    from mcp_server.browser import get_page
+    from playwright.sync_api import sync_playwright
+    from playwright_stealth import Stealth
 
     query = title
     if keywords:
@@ -60,7 +61,19 @@ def search_jobs(
 
     logger.info("搜索岗位: %s (city=%s)", title, city or "不限")
 
-    page = get_page()
+    pw = sync_playwright().start()
+    browser = pw.chromium.launch(
+        headless=True,
+        args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+    )
+    ctx = browser.new_context(
+        viewport={"width": 1920, "height": 1080},
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        locale="zh-CN",
+        timezone_id="Asia/Shanghai",
+    )
+    page = ctx.new_page()
+    Stealth().apply_stealth_sync(page)
     jobs: list[JobListing] = []
 
     try:
@@ -136,7 +149,16 @@ def search_jobs(
     except Exception as e:
         logger.error("搜索失败: %s", e)
     finally:
-        page.close()
+        try:
+            page.close()
+            ctx.close()
+            browser.close()
+        except Exception:
+            pass
+        try:
+            pw.stop()
+        except Exception:
+            pass
 
     jobs.sort(key=lambda j: j.match_score, reverse=True)
     return jobs[:limit]
