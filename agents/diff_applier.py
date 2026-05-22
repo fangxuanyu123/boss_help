@@ -147,6 +147,12 @@ class DiffApplier:
             raise ApplyError(f"delete 需要子索引路径")
 
         if not path:
+            if change.action in (DiffAction.rewrite, DiffAction.append, DiffAction.highlight):
+                value = change.item or change.rewritten
+                if value:
+                    lst.append(value)
+                    logger.info("%s action for %s (无子索引) — 自动降级为 append", change.action.value, field)
+                return
             if change.action == DiffAction.reorder:
                 logger.info("reorder action for %s (无子索引) — 跳过，仅前端提示", field)
                 return

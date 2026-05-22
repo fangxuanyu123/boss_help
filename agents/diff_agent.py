@@ -93,14 +93,21 @@ class DiffAgent:
 }}
 
 【target 路径规则】
-- summary, title: 直接写字段名
-- work_experiences[N].responsibilities[M]: N是经历序号从0开始，M是职责序号从0开始
+- summary, title: 直接写字段名，action 用 rewrite
+- work_experiences[N].responsibilities[M]: N是经历序号从0开始，M是职责序号从0开始，action 用 rewrite
 - work_experiences[N].achievements[M]: 同上
 - projects[N].highlights[M]: 同上
-- projects[N].tech_stack: 追加技术栈
-- skills[N].items: N是技能类别序号，追加到该类别下
-- certifications: 追加证书
-- work_experiences[N].position: 改写职位（极少使用）
+- projects[N].tech_stack: 追加单个技术，action 必须用 append，item 填技术名
+- skills[N].items: N是技能类别序号，追加单个技能，action 必须用 append，item 填技能名
+- certifications: 追加单个证书，action 必须用 append，item 填证书名
+- work_experiences[N].position: 改写职位（极少使用），action 用 rewrite
+
+【action 选择规则（重要）】
+- rewrite: 用于改写已有文字，必须指定到具体条目的索引（如 responsibilities[2]）
+- append: 用于向列表追加新条目，target 写到列表字段即可（如 skills[0].items 或 certifications），不需要子索引
+- delete: 用于删除某条，必须指定到具体索引
+- highlight: 同 rewrite，用于把已有但埋没的内容改写得更突出
+- reorder: 仅记录"建议调序"提示，不实际修改
 
 【original 字段要求】
 - 必须和被改动的原文严格一致，用于 DiffApplier 精确匹配定位

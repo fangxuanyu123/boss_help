@@ -78,13 +78,21 @@ def search_jobs(
 
     try:
         page.goto(search_url, timeout=30000, wait_until="domcontentloaded")
-        time.sleep(3)
+        time.sleep(5)
 
+        current_url = page.url
+        if "login" in current_url or "verify" in current_url or "captcha" in current_url:
+            raise RuntimeError(f"Boss直聘触发了反爬验证，当前页面: {current_url[:60]}")
+
+        # 多策略尝试找到职位卡片
         job_cards = page.query_selector_all("li.job-card-wrapper")
         if not job_cards:
             job_cards = page.query_selector_all("li.job-card-box")
         if not job_cards:
             job_cards = page.query_selector_all("[class*='job-card']")
+        if not job_cards:
+            # 最后尝试：直接搜 job-list
+            job_cards = page.query_selector_all("div.job-list-box li, ul.job-list li")
 
         for card in job_cards[:limit * 2]:
             try:
@@ -146,8 +154,12 @@ def search_jobs(
                 logger.debug("解析卡片失败: %s", e)
                 continue
 
+    except RuntimeError:
+        raise
     except Exception as e:
-        logger.error("搜索失败: %s", e)
+        msg = f"Boss直聘搜索不可用（网站可能触发了反爬验证）: {e}"
+        logger.error(msg)
+        raise RuntimeError(msg) from e
     finally:
         try:
             page.close()
