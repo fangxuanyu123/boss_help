@@ -234,7 +234,6 @@ boss_help/
 
 ## TODO（后续迭代）
 - [ ] 多轮对话式简历优化（用户反馈 → Agent重新调整）
-- [ ] 批量简历优化
 - [ ] DiffApplier 支持 reorder action
 - [ ] 简历优化历史记录与版本对比
 - [ ] Boss 直聘岗位自动筛选与匹配

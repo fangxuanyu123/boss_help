@@ -120,43 +120,41 @@ def test_delete_responsibility():
     assert result.work_experiences[0].responsibilities[0] == "负责系统日常维护"
 
 
-def test_fuzzy_match_original():
-    """模糊匹配：原文有细微差异时仍能匹配"""
+def test_rewrite_trusts_target_path():
+    """改写不再校验原文，信任target路径直接覆写"""
     resume = make_sample_resume()
     applier = DiffApplier()
     diff = DiffResult(changes=[
         DiffChange(
             target="work_experiences[0].responsibilities[0]",
             action=DiffAction.rewrite,
-            original="负责系统日常的维护工作",
-            rewritten="主导系统运维，保障高可用性",
-            reason="STAR",
+            original="和原文完全不同的内容也没关系",
+            rewritten="新的内容",
+            reason="不再校验original字段",
             section_label="...",
         )
     ])
     result, warnings = applier.apply(resume, diff)
     assert len(warnings) == 0
-    assert "高可用性" in result.work_experiences[0].responsibilities[0]
+    assert result.work_experiences[0].responsibilities[0] == "新的内容"
 
 
-def test_original_mismatch_warning():
-    """原文完全对不上时产生警告但保留原文"""
+def test_rewrite_without_original_still_works():
+    """rewrite 不带 original 也能正常工作"""
     resume = make_sample_resume()
     applier = DiffApplier()
     diff = DiffResult(changes=[
         DiffChange(
             target="work_experiences[0].responsibilities[0]",
             action=DiffAction.rewrite,
-            original="这是一个完全不存在的原文XYZXYZXYZ",
-            rewritten="新的内容",
-            reason="...",
+            rewritten="直接覆写的内容",
+            reason="original字段可选",
             section_label="...",
         )
     ])
     result, warnings = applier.apply(resume, diff)
-    assert len(warnings) == 1
-    assert "不匹配" in warnings[0]
-    assert result.work_experiences[0].responsibilities[0] == "负责系统日常维护"
+    assert len(warnings) == 0
+    assert result.work_experiences[0].responsibilities[0] == "直接覆写的内容"
 
 
 def test_index_out_of_range():

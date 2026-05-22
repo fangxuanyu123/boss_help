@@ -3,7 +3,6 @@ import logging
 import re
 from copy import deepcopy
 from typing import Tuple, List
-from thefuzz import fuzz
 from models.resume import Resume, DiffChange, DiffResult, DiffAction
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,6 @@ class DiffApplier:
     然后逐条解析 target 路径、用 fuzzy matching 定位、执行操作。
     """
 
-    SIMILARITY_THRESHOLD = 60  # 模糊匹配最低相似度
 
     def apply(self, original: Resume, diff: DiffResult) -> Tuple[Resume, List[str]]:
         """应用改动，返回 (修改后的Resume, 警告列表)"""
@@ -149,6 +147,9 @@ class DiffApplier:
             raise ApplyError(f"delete 需要子索引路径")
 
         if not path:
+            if change.action == DiffAction.reorder:
+                logger.info("reorder action for %s (无子索引) — 跳过，仅前端提示", field)
+                return
             raise ApplyError(f"{field} 没有子索引，无法定位具体条目")
 
         idx_match = re.match(r'^\[(\d+)\]$', path[0])
@@ -162,13 +163,6 @@ class DiffApplier:
         original_text = lst[idx]
 
         if change.action == DiffAction.rewrite:
-            if change.original:
-                similarity = fuzz.partial_ratio(change.original, original_text)
-                if similarity < self.SIMILARITY_THRESHOLD:
-                    raise ApplyError(
-                        f"原文不匹配 (相似度{similarity}%)，原文='{original_text[:80]}...'，"
-                        f"期望='{change.original[:80]}...'"
-                    )
             lst[idx] = change.rewritten
         elif change.action == DiffAction.highlight:
             if change.rewritten:

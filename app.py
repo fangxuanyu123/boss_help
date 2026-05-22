@@ -12,7 +12,6 @@ from agents.optimization_agent import OptimizationAgent
 from agents.resume_generation_agent import ResumeGenerationAgent
 from agents.job_matching_agent import JobMatchingAgent
 from agents.reflection_loop import ReflectionLoop
-from evaluators.resume_analysis_evaluator import ResumeAnalysisEvaluator
 from evaluators.role_analyzer_evaluator import RoleAnalyzerEvaluator
 from evaluators.gap_analyzer_evaluator import GapAnalyzerEvaluator
 from evaluators.optimization_evaluator import OptimizationEvaluator
@@ -53,7 +52,6 @@ def get_generators():
 @st.cache_resource
 def get_reflection_loops():
     return {
-        "analysis": ReflectionLoop(ResumeAnalysisEvaluator(), max_retries=2),
         "role":     ReflectionLoop(RoleAnalyzerEvaluator(), max_retries=2),
         "gap":      ReflectionLoop(GapAnalyzerEvaluator(), max_retries=2),
         "optimization": ReflectionLoop(OptimizationEvaluator(), max_retries=2),
@@ -185,13 +183,9 @@ if start_btn:
                 jp = st.session_state.job_profile
                 st.write(f"✅ 岗位画像完成: {jp.title} ({jp.level or '层级未指定'})")
 
-                # Step 2.5: 深度分析简历（with Reflection）
+                # Step 2.5: 深度分析简历
                 st.write("🔬 深度分析简历内容...")
-                st.session_state.resume_analysis, analysis_evals = reflection_loops["analysis"].run(
-                    agent_callable=lambda critique: agents["analysis"].analyze(structured_resume, critique=critique),
-                    context={"resume_raw_text": resume.raw_text},
-                )
-                st.session_state.reflection_logs["analysis"] = analysis_evals
+                st.session_state.resume_analysis = agents["analysis"].analyze(structured_resume)
                 st.write("✅ 简历深度分析完成")
 
                 # Step 3: Gap 分析（with Reflection）
@@ -418,7 +412,6 @@ if st.session_state.optimized_resume:
             st.subheader("🔍 质量评估")
             logs = st.session_state.get("reflection_logs", {})
             for module_name, module_label in [
-                ("analysis", "简历分析"),
                 ("role", "岗位画像"),
                 ("gap", "差距分析"),
                 ("optimization", "优化建议"),
