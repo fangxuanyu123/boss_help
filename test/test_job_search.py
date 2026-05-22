@@ -21,7 +21,7 @@ def main():
     print("  岗位搜索功能测试")
     print("=" * 60)
     print()
-    print("  基于简历关键字段搜索 Boss 直聘匹配岗位")
+    print("  生成主流招聘平台搜索链接 + Bing 聚合搜索")
     print()
 
     # --- 解析参数 ---
@@ -77,10 +77,7 @@ def main():
         )
 
         if not jobs:
-            print("⚠️ 未搜索到任何岗位。可能的原因：")
-            print("  1. Boss 直聘反爬验证拦截了请求")
-            print("  2. 搜索关键词没有匹配的岗位")
-            print("  3. 网络连接问题")
+            print("⚠️ 未生成任何搜索链接。")
             return
 
         print_separator(f"搜索结果（共 {len(jobs)} 个岗位）")
@@ -117,11 +114,8 @@ def main():
         print("  测试完成")
         print('='*60)
 
-    except RuntimeError as e:
-        print(f"\n❌ 搜索失败: {e}")
-        print("Boss 直聘可能触发了反爬验证。")
     except Exception as e:
-        print(f"\n❌ 未知错误: {e}")
+        print(f"\n❌ 错误: {e}")
 
 
 if __name__ == "__main__":
