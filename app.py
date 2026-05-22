@@ -254,25 +254,6 @@ if start_btn:
                 st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
                 st.write("✅ PDF 生成完成")
 
-                # Step 8: 岗位搜索
-                st.write("🔗 搜索匹配岗位...")
-                opt = st.session_state.optimized_resume
-                all_skills = []
-                for s in opt.skills:
-                    all_skills.extend(s.items)
-                search_title = opt.title or job_title
-                search_keywords = list(set(all_skills))[:12]
-                try:
-                    st.session_state.job_listings = search_jobs(
-                        title=search_title,
-                        keywords=search_keywords,
-                        limit=15,
-                    )
-                    st.write(f"✅ 找到 {len(st.session_state.job_listings)} 个匹配岗位")
-                except Exception as e:
-                    st.warning(f"岗位搜索暂不可用: {e}")
-                    st.session_state.job_listings = []
-
                 status.update(label="✨ 优化完成！", state="complete", expanded=False)
 
             except Exception as e:
@@ -507,32 +488,48 @@ if st.session_state.optimized_resume:
     # ---- Tab 4: 岗位匹配 ----
     with tabs[3]:
         st.subheader("🔗 匹配岗位")
-        listings = st.session_state.get("job_listings", [])
-        if not listings:
-            st.info("完成简历优化后，将自动搜索匹配岗位。")
+
+        if not st.session_state.get("optimized_resume"):
+            st.info("请先完成简历优化，然后在此搜索匹配岗位。")
         else:
             opt = st.session_state.optimized_resume
             all_skills = []
-            if opt:
-                for s in opt.skills:
-                    all_skills.extend(s.items)
-            keywords_str = " / ".join(all_skills[:8]) if all_skills else ""
-            st.caption(f"搜索词: **{opt.title if opt else st.session_state.job_title_input}** | 技能: {keywords_str}")
+            for s in opt.skills:
+                all_skills.extend(s.items)
+            search_title = opt.title or st.session_state.job_title_input
+            search_keywords = list(set(all_skills))[:12]
+            keywords_str = " / ".join(search_keywords[:8])
 
-            for i, job in enumerate(listings):
-                score_color = "green" if job.match_score >= 70 else "orange" if job.match_score >= 50 else "red"
-                with st.container(border=True):
-                    col_l, col_r = st.columns([3, 1])
-                    with col_l:
-                        st.markdown(f"### {i+1}. {job.title}")
-                        st.markdown(f"**{job.company}** | {job.salary} | {job.city}")
-                        st.caption(f"{job.experience} | {job.education}")
-                        if job.tags:
-                            st.caption(" / ".join(job.tags))
-                    with col_r:
-                        st.metric("匹配度", f"{job.match_score:.0f}%")
-                        if job.url:
-                            st.link_button("查看详情", job.url)
+            st.caption(f"将搜索: **{search_title}** | 技能: {keywords_str}")
+
+            if st.button("🔍 搜索匹配岗位", type="primary", key="search_jobs_btn"):
+                with st.spinner("正在搜索 Boss 直聘..."):
+                    try:
+                        st.session_state.job_listings = search_jobs(
+                            title=search_title,
+                            keywords=search_keywords,
+                            limit=15,
+                        )
+                    except Exception as e:
+                        st.error(f"搜索失败: {e}")
+                        st.session_state.job_listings = []
+
+            listings = st.session_state.get("job_listings", [])
+            if listings:
+                st.success(f"找到 {len(listings)} 个岗位")
+                for i, job in enumerate(listings):
+                    with st.container(border=True):
+                        col_l, col_r = st.columns([3, 1])
+                        with col_l:
+                            st.markdown(f"### {i+1}. {job.title}")
+                            st.markdown(f"**{job.company}** | {job.salary} | {job.city}")
+                            st.caption(f"{job.experience} | {job.education}")
+                            if job.tags:
+                                st.caption(" / ".join(job.tags))
+                        with col_r:
+                            st.metric("匹配度", f"{job.match_score:.0f}%")
+                            if job.url:
+                                st.link_button("查看详情", job.url)
 
 # ---- 底部 ----
 st.divider()
