@@ -79,14 +79,25 @@ def _search_51job(title: str, keywords: list[str], city: str, limit: int) -> lis
         page.goto(search_url, timeout=30000, wait_until="domcontentloaded")
         time.sleep(3)
 
-        # 51job 的结果在 div.jlist 或 div.el 中
+        # 调试：检查实际 URL 和页面内容
+        logger.info("51job 实际页面: %s", page.url[:80])
+        body_text = page.inner_text("body")[:200] if page.query_selector("body") else "(空)"
+        logger.info("51job 页面片段: %s", body_text.replace("\n", " "))
+
+        # 多策略找卡片
         cards = page.query_selector_all("div.el")
         if not cards:
             cards = page.query_selector_all("div.joblist-item")
         if not cards:
             cards = page.query_selector_all("[class*='job']")
+        if not cards:
+            cards = page.query_selector_all("div.re, div.r1, div.r2")
+        if not cards:
+            cards = page.query_selector_all("script")  # 检查是否纯JS渲染
 
-        logger.info("51job 找到 %d 个卡片", len(cards))
+        logger.info("51job 找到 %d 个卡片（script=%d）",
+                    0 if not cards else len(cards),
+                    sum(1 for c in (cards or []) if c.evaluate("el => el.tagName") == "SCRIPT"))
 
         for card in cards[:limit * 2]:
             try:
