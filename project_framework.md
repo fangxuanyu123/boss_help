@@ -46,6 +46,8 @@
    │   └──────────────────────────────────┘
    │
    └─ Step 7: PDF渲染（StyleAgent → HTML → Playwright Chromium → PDF下载）
+       │
+       └─ Step 8: 面试准备（InterviewPrepAgent → 技术问答/短板应对/系统设计/行为面试）
 ```
 
 ## 双输入模式
@@ -73,6 +75,7 @@
 | ResumeGenerationAgent | `resume_generation_agent.py` | 调度 DiffAgent + DiffApplier + CoherenceReviewer 完成增量优化 |
 | JobMatchingAgent | `job_matching_agent.py` | 匹配度分析 + 输出未覆盖差距（uncovered_gaps）驱动再优化 |
 | MatchLoop | `match_loop.py` | 匹配闭环引擎：生成→打分→不通过→反馈→再生成（最多2轮） |
+| InterviewPrepAgent | `interview_prep_agent.py` | 面试准备：基于gap分析生成技术问答/短板应对/系统设计/行为面试 |
 | ReflectionLoop | `reflection_loop.py` | 通用自省评估循环：调用Agent→独立评估→不通过注入critique重试 |
 
 ### 2. 评估器模块 (`evaluators/`)
