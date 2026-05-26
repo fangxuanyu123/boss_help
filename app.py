@@ -11,6 +11,7 @@ from agents.gap_analyzer_agent import GapAnalyzerAgent
 from agents.optimization_agent import OptimizationAgent
 from agents.resume_generation_agent import ResumeGenerationAgent
 from agents.job_matching_agent import JobMatchingAgent
+from agents.interview_prep_agent import InterviewPrepAgent
 from agents.reflection_loop import ReflectionLoop
 from evaluators.role_analyzer_evaluator import RoleAnalyzerEvaluator
 from evaluators.gap_analyzer_evaluator import GapAnalyzerEvaluator
@@ -18,8 +19,6 @@ from evaluators.optimization_evaluator import OptimizationEvaluator
 
 from generators.template_engine import TemplateEngine
 from generators.pdf_renderer import PDFRenderer
-
-from mcp_server.job_search import search_jobs
 
 
 # ---- 页面配置 ----
@@ -43,6 +42,7 @@ def get_agents():
         "optimization": OptimizationAgent(),
         "generation": ResumeGenerationAgent(),
         "matching": JobMatchingAgent(),
+        "interview_prep": InterviewPrepAgent(),
     }
 
 
@@ -82,7 +82,7 @@ defaults = {
     "current_template": templates[0]["id"],
     "job_title_input": "",
     "reflection_logs": {},
-    "job_listings": [],
+    "interview_prep": None,
 }
 for key, val in defaults.items():
     if key not in st.session_state:
@@ -254,6 +254,18 @@ if start_btn:
                 st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
                 st.write("✅ PDF 生成完成")
 
+                # Step 8: 面试准备
+                st.write("🎯 生成面试准备材料...")
+                tech_kw = st.session_state.job_profile.tech_keywords or []
+                st.session_state.interview_prep = agents["interview_prep"].generate(
+                    gap_analysis=st.session_state.gap_analysis,
+                    suggestions=st.session_state.suggestions,
+                    match_result=st.session_state.match_result,
+                    tech_keywords=tech_kw,
+                    job_title=job_title,
+                )
+                st.write("✅ 面试准备生成完成")
+
                 status.update(label="✨ 优化完成！", state="complete", expanded=False)
 
             except Exception as e:
@@ -265,7 +277,7 @@ if start_btn:
 if st.session_state.optimized_resume:
     st.divider()
 
-    tabs = st.tabs(["📊 优化预览", "🔬 分析报告", "📥 PDF下载", "🔗 岗位匹配"])
+    tabs = st.tabs(["📊 优化预览", "🔬 分析报告", "📥 PDF下载", "🎯 面试准备"])
 
     # ---- Tab 1: 优化预览 ----
     with tabs[0]:
@@ -485,52 +497,50 @@ if st.session_state.optimized_resume:
                 mime="text/markdown",
             )
 
-    # ---- Tab 4: 岗位匹配 ----
+    # ---- Tab 4: 面试准备 ----
     with tabs[3]:
-        st.subheader("🔗 匹配岗位")
-
-        if not st.session_state.get("optimized_resume"):
-            st.info("请先完成简历优化，然后在此搜索匹配岗位。")
+        st.subheader("🎯 面试准备")
+        prep = st.session_state.get("interview_prep")
+        if not prep:
+            st.info("完成简历优化后，将自动生成针对性面试准备材料。")
         else:
-            opt = st.session_state.optimized_resume
-            all_skills = []
-            for s in opt.skills:
-                all_skills.extend(s.items)
-            search_title = opt.title or st.session_state.job_title_input
-            search_keywords = list(set(all_skills))[:12]
-            keywords_str = " / ".join(search_keywords[:8])
+            ta, ga, sd, bh = st.tabs(["技术问答", "短板应对", "系统设计", "行为面试"])
 
-            st.caption(f"将搜索: **{search_title}** | 技能: {keywords_str}")
-
-            if st.button("🔍 搜索匹配岗位", type="primary", key="search_jobs_btn"):
-                with st.spinner("正在搜索 Boss 直聘..."):
-                    try:
-                        st.session_state.job_listings = search_jobs(
-                            title=search_title,
-                            keywords=search_keywords,
-                            limit=15,
-                        )
-                    except Exception as e:
-                        st.error(f"搜索失败: {e}")
-                        st.session_state.job_listings = []
-
-            listings = st.session_state.get("job_listings", [])
-            if listings:
-                st.success(f"找到 {len(listings)} 个岗位")
-                for i, job in enumerate(listings):
+            with ta:
+                for q in prep.get("technical_qa", []):
                     with st.container(border=True):
-                        col_l, col_r = st.columns([3, 1])
-                        with col_l:
-                            st.markdown(f"### {i+1}. {job.title}")
-                            source_badge = f" `[{job.source}]`" if job.source else ""
-                            st.markdown(f"**{job.company}**{source_badge} | {job.salary} | {job.city}")
-                            st.caption(f"{job.experience} | {job.education}")
-                            if job.tags:
-                                st.caption(" / ".join(job.tags))
-                        with col_r:
-                            st.metric("匹配度", f"{job.match_score:.0f}%")
-                            if job.url:
-                                st.link_button("查看详情", job.url)
+                        st.markdown(f"**{q.get('topic', '')}**")
+                        with st.expander(f"Q: {q.get('question', '')}", expanded=True):
+                            st.markdown(q.get("answer_hint", ""))
+
+            with ga:
+                for q in prep.get("gap_qa", []):
+                    with st.container(border=True):
+                        st.markdown(f"**🎯 {q.get('gap', '')}**")
+                        with st.expander(f"Q: {q.get('question', '')}", expanded=True):
+                            st.markdown(q.get("suggested_answer", ""))
+
+            with sd:
+                for s in prep.get("system_design", []):
+                    with st.container(border=True):
+                        st.markdown(f"**{s.get('scenario', '')}**")
+                        for p in s.get("key_points", []):
+                            st.markdown(f"- {p}")
+
+            with bh:
+                for b in prep.get("behavioral", []):
+                    with st.container(border=True):
+                        st.markdown(f"**{b.get('situation', '')}**")
+                        st.markdown(f"Q: {b.get('question', '')}")
+                        st.caption(f"准备: {b.get('prep_tip', '')}")
+
+            # 底部考前建议
+            st.divider()
+            tips = prep.get("last_minute_tips", [])
+            if tips:
+                st.info("📋 " + " | ".join(tips))
+            if prep.get("estimated_prep_time"):
+                st.caption(f"⏱ 建议准备时间: {prep['estimated_prep_time']}")
 
 # ---- 底部 ----
 st.divider()
