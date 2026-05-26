@@ -72,6 +72,43 @@ class DiffAgent:
 {suggestion_text}
 {uncovered_text}
 
+=== Few-Shot 示例（高质量改动参考） ===
+
+以下是 3 条高质量改动示例，请模仿其精确度和理由深度：
+
+【示例 1：STAR 法则改写职责】
+输入：原文 "负责系统日常维护"
+输出：
+{{
+    "target": "work_experiences[0].responsibilities[0]",
+    "action": "rewrite",
+    "original": "负责系统日常维护",
+    "rewritten": "主导XX业务系统运维，保障99.9%可用性，覆盖日均50万+请求，通过自动化监控将故障响应时间从30分钟降至5分钟",
+    "reason": "STAR法则改写：补充了系统规模（日均50万+请求）、量化成果（99.9%可用性）、主动贡献（故障响应优化）",
+    "section_label": "工作经历-XX公司-职责1"
+}}
+
+【示例 2：补充缺失关键词】
+输入：gap分析显示 Kafka 缺失，但项目描述中有使用
+输出：
+{{
+    "target": "skills[1].items",
+    "action": "append",
+    "item": "Kafka",
+    "reason": "gap分析显示该关键词缺失，但XX项目中实际使用了Kafka进行消息处理，补充后提升匹配度",
+    "section_label": "技能-中间件"
+}}
+
+【示例 3：删除冗余表述】
+输入：原文 "参与需求评审会议，记录会议纪要"
+输出：
+{{
+    "target": "work_experiences[0].responsibilities[2]",
+    "action": "delete",
+    "reason": "参与需求评审是团队基础协作活动，不体现个人技术能力，删除以节省空间给更有区分度的内容",
+    "section_label": "工作经历-XX公司-职责3"
+}}
+
 === 改动清单格式 ===
 
 返回 JSON，每条改动必须包含以下字段：

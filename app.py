@@ -2,6 +2,7 @@
 import streamlit as st
 from pathlib import Path
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from utils.resume_parser import parse_resume
 
@@ -162,28 +163,35 @@ if start_btn:
                 st.session_state.resume_raw_text = resume.raw_text
                 st.write("✅ 简历解析完成")
 
-                # Step 1.5: 结构化提取（从raw_text解析出完整的structured Resume）
-                st.write("📝 提取简历结构化信息...")
-                structured_resume = agents["analysis"].extract_structured_resume(
-                    resume.raw_text, job_title
-                )
-                st.session_state.resume = structured_resume  # 替换空壳Resume
-                st.write(f"✅ 结构化提取完成: {len(structured_resume.work_experiences)}段工作经历, {len(structured_resume.projects)}个项目, {len(structured_resume.skills)}类技能")
+                # Step 1.5 + 2: 结构化提取 & 岗位画像（并行）
+                st.write("📝 提取结构化信息 + 分析岗位画像（并行）...")
 
-                # Step 2: 岗位画像（with Reflection）
-                st.write("🔍 分析目标岗位画像...")
-                if jd_text.strip():
-                    st.session_state.job_profile, role_evals = reflection_loops["role"].run(
-                        agent_callable=lambda critique: agents["role"].analyze_from_jd(jd_text, critique=critique),
-                        context={"jd_text": jd_text},
-                    )
-                else:
-                    st.session_state.job_profile, role_evals = reflection_loops["role"].run(
-                        agent_callable=lambda critique: agents["role"].analyze_from_title(job_title, critique=critique),
-                        context={},
-                    )
+                def _extract():
+                    return agents["analysis"].extract_structured_resume(resume.raw_text, job_title)
+
+                def _role_analyze():
+                    if jd_text.strip():
+                        return reflection_loops["role"].run(
+                            agent_callable=lambda critique: agents["role"].analyze_from_jd(jd_text, critique=critique),
+                            context={"jd_text": jd_text},
+                        )
+                    else:
+                        return reflection_loops["role"].run(
+                            agent_callable=lambda critique: agents["role"].analyze_from_title(job_title, critique=critique),
+                            context={},
+                        )
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    future_extract = executor.submit(_extract)
+                    future_role = executor.submit(_role_analyze)
+                    wait([future_extract, future_role])
+                    structured_resume = future_extract.result()
+                    st.session_state.job_profile, role_evals = future_role.result()
+
+                st.session_state.resume = structured_resume
                 st.session_state.reflection_logs["role"] = role_evals
                 jp = st.session_state.job_profile
+                st.write(f"✅ 结构化提取完成: {len(structured_resume.work_experiences)}段经历, {len(structured_resume.projects)}个项目, {len(structured_resume.skills)}类技能")
                 st.write(f"✅ 岗位画像完成: {jp.title} ({jp.level or '层级未指定'})")
 
                 # Step 2.5: 深度分析简历
@@ -244,27 +252,35 @@ if start_btn:
                 num_rounds = len(match_rounds)
                 st.write(f"✅ 优化完成: {num_rounds}轮, 最终匹配度 {final_score}/100")
 
-                # Step 7: 生成 PDF
-                st.write("🖨️ 渲染PDF...")
-                html = template_engine.render(
-                    st.session_state.optimized_resume,
-                    job_title,
-                    st.session_state.current_template,
-                )
-                st.session_state.pdf_bytes = pdf_renderer.render_to_bytes(html)
-                st.write("✅ PDF 生成完成")
-
-                # Step 8: 面试准备
-                st.write("🎯 生成面试准备材料...")
+                # Step 7 + 8: PDF 渲染 & 面试准备（并行）
+                st.write("🖨️ 渲染PDF + 面试准备（并行）...")
                 tech_kw = st.session_state.job_profile.tech_keywords or []
-                st.session_state.interview_prep = agents["interview_prep"].generate(
-                    gap_analysis=st.session_state.gap_analysis,
-                    suggestions=st.session_state.suggestions,
-                    match_result=st.session_state.match_result,
-                    tech_keywords=tech_kw,
-                    job_title=job_title,
-                )
-                st.write("✅ 面试准备生成完成")
+
+                def _render_pdf():
+                    html = template_engine.render(
+                        st.session_state.optimized_resume,
+                        job_title,
+                        st.session_state.current_template,
+                    )
+                    return pdf_renderer.render_to_bytes(html)
+
+                def _gen_interview_prep():
+                    return agents["interview_prep"].generate(
+                        gap_analysis=st.session_state.gap_analysis,
+                        suggestions=st.session_state.suggestions,
+                        match_result=st.session_state.match_result,
+                        tech_keywords=tech_kw,
+                        job_title=job_title,
+                    )
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    future_pdf = executor.submit(_render_pdf)
+                    future_prep = executor.submit(_gen_interview_prep)
+                    wait([future_pdf, future_prep])
+                    st.session_state.pdf_bytes = future_pdf.result()
+                    st.session_state.interview_prep = future_prep.result()
+
+                st.write("✅ PDF + 面试准备完成")
 
                 status.update(label="✨ 优化完成！", state="complete", expanded=False)
 
