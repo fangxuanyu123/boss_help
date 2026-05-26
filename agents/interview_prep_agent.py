@@ -2,7 +2,7 @@
 import json
 import logging
 from openai import OpenAI
-from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME, LLM_MODEL_STRONG
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class InterviewPrepAgent:
 
     def __init__(self):
         self.client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-        self.model = LLM_MODEL_NAME
+        self.model = LLM_MODEL_STRONG
 
     def _fetch_mianjing(self, tech_keywords: list[str]) -> list[dict]:
         """从牛客网和CSDN搜索真实面经"""

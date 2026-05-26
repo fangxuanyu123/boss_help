@@ -2,7 +2,7 @@
 from typing import Dict, Any
 import json
 from openai import OpenAI
-from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME, LLM_MODEL_FAST
 from models.resume import Resume, WorkExperience, Project, Skill, Education
 
 
@@ -53,7 +53,7 @@ class ResumeAnalysisAgent:
 }}
 """
         response = self.client.chat.completions.create(
-            model=self.model,
+            model=LLM_MODEL_FAST,
             messages=[
                 {"role": "system", "content": "你是一位精确的简历解析专家。只提取原文中存在的信息，绝不编造。输出JSON格式。"},
                 {"role": "user", "content": prompt},

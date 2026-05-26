@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Any
 import json
 from openai import OpenAI
-from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_FAST
 
 
 @dataclass
@@ -28,7 +28,7 @@ class BaseEvaluator(ABC):
 
     def __init__(self, threshold: float = 6.0):
         self.client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-        self.model = LLM_MODEL_NAME
+        self.model = LLM_MODEL_FAST
         self.threshold = threshold
 
     @abstractmethod
