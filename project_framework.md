@@ -98,6 +98,12 @@
 
 - `resume_parser.py`: PDF/DOCX 简历解析为原始文本
 - `file_utils.py`: 文件管理
+- `db.py`: SQLite 持久化，保存优化历史记录
+
+### 7. 评测模块 (`eval/`)
+
+- `golden_cases.py`: 3组标注金标准测试用例（Java/Python/嵌入式）
+- `scorer.py`: 自动评分脚本，从5个维度评估DiffAgent输出质量
 
 ## 完整数据流
 
@@ -162,9 +168,13 @@ boss_help/
 ├── models/
 │   ├── resume.py
 │   └── job.py
+├── eval/
+│   ├── golden_cases.py
+│   └── scorer.py
 ├── utils/
 │   ├── resume_parser.py
-│   └── file_utils.py
+│   ├── file_utils.py
+│   └── db.py
 └── test/
     ├── test_diff_applier.py
     ├── test_reflection_loop.py

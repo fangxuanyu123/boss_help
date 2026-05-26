@@ -1,5 +1,6 @@
 """AI 简历优化助手 —— 基于目标岗位驱动的简历优化与PDF生成"""
 import streamlit as st
+import json
 from pathlib import Path
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -21,6 +22,8 @@ from evaluators.optimization_evaluator import OptimizationEvaluator
 from generators.template_engine import TemplateEngine
 from generators.pdf_renderer import PDFRenderer
 
+from utils.db import init_db, save_optimization, list_history
+
 
 # ---- 页面配置 ----
 st.set_page_config(
@@ -31,7 +34,21 @@ st.set_page_config(
 
 st.title("📄 AI 简历优化助手")
 st.caption("基于目标岗位驱动，上传简历即可获得专业优化和PDF输出。JD可选，仅需岗位名也可优化。")
+init_db()
 
+# ---- 侧边栏：历史记录 ----
+with st.sidebar:
+    st.subheader("📋 历史记录")
+    history = list_history(limit=15)
+    if not history:
+        st.caption("暂无优化记录")
+    else:
+        for h in history:
+            score_str = f" | {h['match_score']:.0f}分" if h['match_score'] else ""
+            with st.expander(f"{h['job_title']}{score_str}", expanded=False):
+                st.caption(f"简历: {h['resume_name']}")
+                st.caption(f"时间: {h['created_at']}")
+                st.caption(f"匹配度: {h['match_score']:.0f}/100 | 改动: {h['num_changes']}处 | {h['num_rounds']}轮")
 
 # ---- 初始化组件 ----
 @st.cache_resource
@@ -281,6 +298,32 @@ if start_btn:
                     st.session_state.interview_prep = future_prep.result()
 
                 st.write("✅ PDF + 面试准备完成")
+
+                # 保存到历史记录
+                try:
+                    diff = st.session_state.get("diff_result")
+                    coherence = st.session_state.get("coherence_review")
+                    save_optimization(
+                        resume_name=uploaded_file.name,
+                        job_title=job_title,
+                        match_score=st.session_state.match_result.get("match_score"),
+                        num_changes=len(diff.changes) if diff and diff.changes else 0,
+                        num_rounds=len(st.session_state.get("match_rounds", [])),
+                        coherence_score=coherence.coherence_score if coherence else None,
+                        pdf_style=st.session_state.current_template,
+                        resume_raw_text=st.session_state.resume_raw_text,
+                        optimized_resume_json=st.session_state.optimized_resume.model_dump_json() if st.session_state.optimized_resume else "",
+                        diff_result_json=diff.model_dump_json() if diff else "",
+                        match_result_json=json.dumps(st.session_state.match_result),
+                        interview_prep_json=json.dumps(st.session_state.interview_prep) if st.session_state.interview_prep else "",
+                        reflection_logs_json=json.dumps([{
+                            "module": k,
+                            "scores": [e.score for e in v],
+                            "passed": v[-1].passed if v else False,
+                        } for k, v in st.session_state.reflection_logs.items()]),
+                    )
+                except Exception:
+                    pass  # 保存失败不影响主流程
 
                 status.update(label="✨ 优化完成！", state="complete", expanded=False)
 

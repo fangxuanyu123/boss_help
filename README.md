@@ -85,6 +85,12 @@ Pipeline 完成后，自动生成面试准备材料：
 
 同时通过 Playwright 搜索**牛客网和 CSDN 上的真实面经**标题和链接，作为 LLM 生成的参考，让问题更有实战感。
 
+### 历史记录 + 评测体系
+
+- **SQLite 持久化**：每次优化自动保存到数据库，侧边栏展示历史记录
+- **金标准评测**：3 组标注数据（Java/Python/嵌入式），自动评分覆盖改动数量、action类型、板块覆盖、reason质量等维度
+- 运行 `python eval/scorer.py` 即可自动评测 DiffAgent 输出质量
+
 ### MCP 支持
 
 面试准备工具封装为 MCP Server（`stdio` transport），可被 Claude Desktop 等外部客户端调用：
@@ -234,9 +240,13 @@ boss_help/
 ├── models/                             # Pydantic 数据模型
 │   ├── resume.py                       # Resume + Diff 模型
 │   └── job.py                          # JobRequirement
+├── eval/                               # 评测模块 ★
+│   ├── golden_cases.py                 # 金标准标注数据
+│   └── scorer.py                       # 自动评分脚本
 ├── utils/                              # 工具层
 │   ├── resume_parser.py                # PDF/DOCX 解析
-│   └── file_utils.py
+│   ├── file_utils.py
+│   └── db.py                           # SQLite 持久化
 ├── test/                               # 6 个测试文件 / 18 个测试函数
 │   ├── test_diff_applier.py            # 9 tests
 │   ├── test_reflection_loop.py         # 7 tests
@@ -250,7 +260,7 @@ boss_help/
 └── README.md
 ```
 
-**代码量**：约 4000 行 Python / 38 个文件
+**代码量**：约 4500 行 Python / 42 个文件
 
 ---
 
@@ -268,6 +278,9 @@ python test/test_interview_prep.py --skip-llm
 
 # 自定义关键词测试面经搜索
 python test/test_interview_prep.py --keywords "Go,微服务,K8s,面试" --skip-llm
+
+# 评测 DiffAgent 在金标准数据上的表现
+python eval/scorer.py
 ```
 
 ---
