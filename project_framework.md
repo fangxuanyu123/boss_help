@@ -9,13 +9,15 @@
 
 | 层级 | 技术选型 | 说明 |
 |------|----------|------|
-| 前端 UI | Streamlit | 4个Tab：优化预览/分析报告/PDF下载/面试准备 |
-| LLM | DeepSeek / OpenAI | 兼容 OpenAI SDK |
+| 前端 UI | Streamlit | 4个Tab + 侧边栏历史记录 |
+| LLM | DeepSeek / OpenAI | 分层模型：FAST(解析/评估) / 默认 / STRONG(面试准备) |
 | 文档解析 | PyMuPDF + python-docx | PDF 和 DOCX 格式简历 |
 | PDF 生成 | Playwright + StyleAgent | LLM动态生成HTML → 无头浏览器渲染 |
-| 浏览器自动化 | Playwright | 面经搜索 |
+| 浏览器自动化 | Playwright | 牛客网/CSDN 面经搜索（带质量过滤） |
 | 数据模型 | Pydantic v2 | 结构化简历、岗位、Diff模型 |
+| 持久化 | SQLite | 优化历史自动保存，侧边栏可查 |
 | MCP | mcp SDK | 面试准备工具可被外部MCP客户端调用 |
+| 评测 | 自研 scorer | 3组金标准用例，5维度自动评分 |
 
 ## 系统架构
 
@@ -24,23 +26,29 @@
            │
            ▼
    ┌─ Step 1:    简历解析（PDF/DOCX → raw_text）
-   ├─ Step 1.5:  结构化提取（LLM → Resume对象）
-   ├─ Step 2:    岗位画像（RoleAnalyzer，with Reflection）
+   │
+   ├─ Step 1.5 + 2:  ┌ 结构化提取（FAST模型）         ┐ 并行
+   │                 └ 岗位画像（RoleAnalyzer + Reflection）┘
+   │
    ├─ Step 2.5:  简历深度分析（ResumeAnalysisAgent）
-   ├─ Step 3:    差距分析（GapAnalyzer，with Reflection）
-   ├─ Step 4:    优化建议（OptimizationAgent，with Reflection）
+   ├─ Step 3:    差距分析（GapAnalyzer + Reflection）
+   ├─ Step 4:    优化建议（OptimizationAgent + Reflection）
+   │
    ├─ Step 5-6:  简历生成 + 匹配闭环
    │   ┌──────────────────────────────────┐
-   │   │ DiffAgent → DiffApplier           │
+   │   │ DiffAgent（Few-Shot示例）          │
+   │   │   → DiffApplier（机械应用）        │
    │   │   → CoherenceReviewer             │
    │   │   → JobMatchingAgent              │
    │   │   ├─ score >= 70 → 通过           │
    │   │   └─ score < 70                   │
-   │   │       → uncovered_gaps → DiffAgent │
+   │   │       → uncovered_gaps → 回Diff   │
    │   │       最多2轮，取最高分             │
    │   └──────────────────────────────────┘
-   ├─ Step 7:    PDF渲染（StyleAgent → HTML → Playwright → PDF）
-   └─ Step 8:    面试准备（InterviewPrepAgent + 牛客/CSDN面经搜索）
+   │
+   └─ Step 7 + 8:  ┌ PDF渲染（StyleAgent）      ┐ 并行
+                   └ 面试准备（InterviewPrepAgent │
+                     + 牛客/CSDN面经搜索）        ┘
 ```
 
 ## 模块设计
@@ -110,26 +118,20 @@
 ```
 用户上传简历 + 岗位名 [+ JD]
            │
-    简历解析 → 结构化提取
+    简历解析 → 结构化提取 ∥ 岗位画像（并行）
            │
-    岗位画像（with Reflection）
+    简历分析 → Gap分析 → 优化建议（Reflection评估）
            │
-    简历深度分析
+  ┌─ MatchLoop（最多2轮）──────────────┐
+  │   DiffAgent(Few-Shot示例) → DiffApplier │
+  │   → CoherenceReviewer                 │
+  │   → JobMatchingAgent                  │
+  │   通过 → 输出 | 不通过 → uncovered_gaps │
+  └───────────────────────────────────────┘
            │
-    Gap分析（with Reflection）
+    StyleAgent PDF ∥ 面试准备（并行）
            │
-    优化建议（with Reflection）
-           │
-  ┌─ MatchLoop（最多2轮）──────────┐
-  │  DiffAgent → DiffApplier       │
-  │    → CoherenceReviewer          │
-  │    → JobMatchingAgent           │
-  │  通过 → 输出 | 不通过 → 回Diff  │
-  └─────────────────────────────────┘
-           │
-    StyleAgent → PDF下载
-           │
-    牛客/CSDN面经搜索 → InterviewPrepAgent → 面试准备
+    SQLite 自动保存 → 历史记录侧边栏
 ```
 
 ## 目录结构

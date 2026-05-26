@@ -62,6 +62,14 @@ Pipeline 中的关键 LLM 调用（岗位画像、差距分析、优化建议）
 - **抓重点** — 是否抓住了最关键的问题？
 
 评分低于 6 分 → 注入具体反馈 → Agent 重新生成，最多重试 2 次。
+评分采用 **FAST 模型**（评估不需要强推理），减少 60% 评估成本。
+
+### 性能优化策略
+
+- **并行执行**：Step 1.5 ∥ Step 2、Step 7 ∥ Step 8，省 2 次 LLM 时延
+- **分层模型**：结构化提取/评估器 → FAST 模型 | 面试准备 → STRONG 模型 | 其余 → 默认模型
+- **Prompt Caching**：固定 system prompt 自动缓存，评估器 100% 可缓存
+- **Few-Shot 示例**：DiffAgent Prompt 包含 3 组高质量改动示例，提升输出稳定性
 
 ### LLM 动态排版 PDF
 
@@ -127,6 +135,10 @@ playwright install chromium
 LLM_API_KEY=sk-your-api-key
 LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL_NAME=deepseek-chat
+
+# 可选：分层模型（不设置则回退到 LLM_MODEL_NAME）
+LLM_MODEL_FAST=deepseek-chat      # 解析/评估用，可換 gpt-4o-mini 降成本
+LLM_MODEL_STRONG=deepseek-chat    # 面试准备用，可換 gpt-4o 提质量
 ```
 
 默认使用 DeepSeek，也支持 OpenAI (`https://api.openai.com/v1`) 或其他兼容接口。
@@ -171,7 +183,7 @@ Step 7   ── StyleAgent 动态排版 → PDF 下载
 Step 8   ── 牛客 / CSDN 面经搜索 → 面试准备 Q&A
 ```
 
-### 11 个 Agent
+### 12 个 Agent
 
 | Agent | 职责 |
 |-------|------|
@@ -296,6 +308,8 @@ python eval/scorer.py
 | PDF 渲染 | Playwright + Chromium | StyleAgent 动态生成 HTML → 无头浏览器 |
 | 浏览器自动化 | Playwright | 牛客 / CSDN 面经搜索 |
 | MCP | `mcp` SDK | 面试准备工具支持外部 MCP 客户端调用 |
+| 持久化 | SQLite | 优化历史自动保存，侧边栏查阅 |
+| 评测 | 自研 scorer | 3 组金标准标注数据，5 维度自动评分 |
 
 ---
 
