@@ -270,29 +270,29 @@ if start_btn:
                 st.write(f"✅ 优化完成: {num_rounds}轮, 最终匹配度 {final_score}/100")
 
                 # Step 7 + 8: PDF 渲染 & 面试准备（并行）
+                # 先提取 session_state 数据到本地变量（子线程不能访问 session_state）
                 st.write("🖨️ 渲染PDF + 面试准备（并行）...")
-                tech_kw = st.session_state.job_profile.tech_keywords or []
+                _resume = st.session_state.optimized_resume
+                _style = st.session_state.current_template
+                _gap = st.session_state.gap_analysis
+                _sug = st.session_state.suggestions
+                _match = st.session_state.match_result
+                _tech_kw = st.session_state.job_profile.tech_keywords or []
 
-                def _render_pdf():
-                    html = template_engine.render(
-                        st.session_state.optimized_resume,
-                        job_title,
-                        st.session_state.current_template,
-                    )
+                def _render_pdf(resume, style):
+                    html = template_engine.render(resume, job_title, style)
                     return pdf_renderer.render_to_bytes(html)
 
-                def _gen_interview_prep():
+                def _gen_interview_prep(gap, sug, match, tech_kw):
                     return agents["interview_prep"].generate(
-                        gap_analysis=st.session_state.gap_analysis,
-                        suggestions=st.session_state.suggestions,
-                        match_result=st.session_state.match_result,
-                        tech_keywords=tech_kw,
+                        gap_analysis=gap, suggestions=sug,
+                        match_result=match, tech_keywords=tech_kw,
                         job_title=job_title,
                     )
 
                 with ThreadPoolExecutor(max_workers=2) as executor:
-                    future_pdf = executor.submit(_render_pdf)
-                    future_prep = executor.submit(_gen_interview_prep)
+                    future_pdf = executor.submit(_render_pdf, _resume, _style)
+                    future_prep = executor.submit(_gen_interview_prep, _gap, _sug, _match, _tech_kw)
                     wait([future_pdf, future_prep])
                     st.session_state.pdf_bytes = future_pdf.result()
                     st.session_state.interview_prep = future_prep.result()
