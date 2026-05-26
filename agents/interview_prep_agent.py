@@ -1,18 +1,36 @@
-"""面试准备 Agent —— 基于 Pipeline 差距分析生成针对性面试Q&A"""
+"""面试准备 Agent —— 基于 Pipeline 差距分析 + 真实面经生成针对性面试Q&A"""
 import json
+import logging
 from openai import OpenAI
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME
 
+logger = logging.getLogger(__name__)
+
 
 class InterviewPrepAgent:
-    """基于简历优化过程的差距分析，生成面试准备材料。
-
-    Pipeline 已经发现了候选人的技能短板和未覆盖的岗位要求，
-    这些正是面试中最可能被问到的问题。"""
+    """基于简历优化过程的差距分析 + 牛客/CSDN真实面经，生成面试准备材料。"""
 
     def __init__(self):
         self.client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
         self.model = LLM_MODEL_NAME
+
+    def _fetch_mianjing(self, tech_keywords: list[str]) -> list[dict]:
+        """从牛客网和CSDN搜索真实面经"""
+        try:
+            from mcp_server.mianjing_search import search_mianjing
+            items = search_mianjing(tech_keywords + ["面经", "面试"], limit=10)
+            result = []
+            for item in items:
+                result.append({
+                    "title": item.title,
+                    "url": item.url,
+                    "source": item.source,
+                })
+            logger.info("获取到 %d 条真实面经参考", len(result))
+            return result
+        except Exception as e:
+            logger.warning("面经搜索失败，使用纯LLM生成: %s", e)
+            return []
 
     def generate(
         self,
@@ -47,7 +65,15 @@ class InterviewPrepAgent:
         gaps = gap_analysis.get("gaps", [])
         weaknesses = gap_analysis.get("weaknesses", [])
 
-        prompt = f"""你是一位资深的技术面试官和面试导师。一位求职者正在准备「{job_title}」的面试，请根据以下简历分析结果，生成针对性的面试准备材料。
+        # 搜索真实面经
+        real_mianjing = self._fetch_mianjing(tech_keywords)
+        mianjing_ref = ""
+        if real_mianjing:
+            mianjing_ref = "\n=== 牛客网/CSDN 真实面经参考（请结合这些真实面经生成更精准的问题） ===\n"
+            for m in real_mianjing:
+                mianjing_ref += f"- [{m['source']}] {m['title']}\n"
+
+        prompt = f"""你是一位资深的技术面试官和面试导师。一位求职者正在准备「{job_title}」的面试，请根据以下简历分析结果和真实面经参考，生成针对性的面试准备材料。
 
 === 目标岗位 ===
 {job_title}
@@ -72,10 +98,11 @@ class InterviewPrepAgent:
 
 === 优化策略 ===
 {suggestions.get('overall_strategy', '')}
-
+{mianjing_ref}
 === 生成要求 ===
 
-请生成面试准备材料，内容要「精准、有深度、针对这个候选人的具体情况」，不要泛泛而谈。
+请生成面试准备材料，内容要「精准、有深度、针对这个候选人的具体情况」。
+如果上面提供了真实面经参考，请综合这些面经中常见的考察方向来生成问题——真实面经比凭空想象的问题更有价值。
 
 返回 JSON：
 
@@ -129,4 +156,6 @@ class InterviewPrepAgent:
             temperature=0.4,
         )
 
-        return json.loads(response.choices[0].message.content)
+        result = json.loads(response.choices[0].message.content)
+        result["_real_mianjing"] = real_mianjing  # 附加面经链接供前端展示
+        return result

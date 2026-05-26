@@ -504,6 +504,14 @@ if st.session_state.optimized_resume:
         if not prep:
             st.info("完成简历优化后，将自动生成针对性面试准备材料。")
         else:
+            # 真实面经参考
+            real_mj = prep.get("_real_mianjing", [])
+            if real_mj:
+                with st.expander(f"📚 真实面经参考（牛客网/CSDN，共{len(real_mj)}条）"):
+                    for mj in real_mj:
+                        source_tag = f" `[{mj.get('source','')}]`"
+                        st.markdown(f"- [{mj.get('title','')}]({mj.get('url','')}){source_tag}")
+
             ta, ga, sd, bh = st.tabs(["技术问答", "短板应对", "系统设计", "行为面试"])
 
             with ta:
@@ -534,7 +542,6 @@ if st.session_state.optimized_resume:
                         st.markdown(f"Q: {b.get('question', '')}")
                         st.caption(f"准备: {b.get('prep_tip', '')}")
 
-            # 底部考前建议
             st.divider()
             tips = prep.get("last_minute_tips", [])
             if tips:
